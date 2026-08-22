@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+build/
+dist/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# CDK
+cdk.out/
+.cdk.staging/
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local 
+
+# Python
+.venv
+__pycache__
+
+# Claude — ignore local settings, but ship the curated skills
+.claude/*
+!.claude/skills/
+
+# Samples (reference material, not part of the boilerplate)
+samples/

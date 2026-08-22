@@ -1,0 +1,105 @@
+/* ============================================================
+   THEMES · the LIGHT theme
+   The system ships DARK by default (see tokens/colors.css +
+   tokens/effects.css, declared on :root). This sheet is the light
+   counterpart: it re-points the SAME token names under
+   [data-theme="light"], so every component that authors against the
+   tokens flips with a single attribute and no per-component work.
+
+   ── How to switch ──────────────────────────────────────────
+   Set the attribute on the root (or any wrapper — themes nest):
+       <html data-theme="light">      · light
+       <html data-theme="dark">       · dark  (same as no attribute)
+   Driven by the useTheme hook + the inline no-flash script in index.html
+   (persists to localStorage under APP_THEME_KEY, applies before paint).
+
+   ── Design of the light theme ──────────────────────────────
+   The canvas becomes a cool near-white with pure-white raised wells.
+   The white-alpha hairlines/panels flip to BLACK-alpha so they read
+   on a light ground. The brand family is DEEPENED: pastel cyan is
+   illegible as text on white, so the accent walks down to a deep
+   teal (kept in-hue) that passes AA both as text and as a fill with
+   white ink (--accent-ink flips to #fff). The signature gradient is
+   likewise deepened so highlight words and hero numbers stay legible.
+   Load AFTER tokens.css so these win on the root (see index.css).
+   ============================================================ */
+
+[data-theme="light"] {
+  color-scheme: light;   /* native controls (scrollbars, form widgets) match */
+  /* ---- canvas & surfaces (cool near-white; raised wells go lighter) ---- */
+  --bg:        #f4f6f7;   /* app / slide canvas */
+  --bg-2:      #ffffff;   /* raised surface: inputs, sidebar, menus, wells */
+  --black:     #d7dbdd;   /* letterbox behind the deck stage → light grey */
+
+  /* ---- ink ramp (near-black → muted, on light) ---- */
+  --ink:       #0d1417;   /* primary text */
+  --ink-2:     #3d464b;   /* secondary / body copy */
+  --ink-3:     #626b70;   /* labels, captions (AA on the canvas) */
+  --ink-4:     #949ca1;   /* dimmed words, sources, de-emphasis */
+
+  /* ---- hairlines & panels — flipped to BLACK at low alpha ---- */
+  --line:      rgba(13, 20, 23, 0.12);
+  --line-2:    rgba(13, 20, 23, 0.07);
+  --panel:     rgba(13, 20, 23, 0.025);
+  --panel-2:   rgba(13, 20, 23, 0.05);
+
+  /* ---- brand family — deepened so it reads on white ----
+     Same hues as dark, walked down in lightness / up in chroma. */
+  --cyan:      #0b7d7e;   /* deep teal — the accent, as text AND as a fill */
+  --teal:      #0d8b88;
+  --teal-deep: #0a6a6a;
+  --blue:      #2f6fc4;
+  --indigo:    #5560cf;
+  --rose:      #c14d68;   /* fail / risk + 3rd lane */
+
+  /* ---- semantic aliases that need an explicit flip ---- */
+  --accent-ink:  #ffffff;                                    /* white ink on the deep-teal fill */
+  /* --accent / --accent-soft / --accent-line derive from --cyan → auto-adapt */
+
+  /* ---- themeable surface + hover primitives ---- */
+  --feat-fill:    color-mix(in srgb, var(--cyan) 8%, transparent);  /* featured tint on white */
+  --feat-fill-2:  color-mix(in srgb, var(--cyan) 6%, transparent);
+  --surface-solid:#ffffff;                                          /* opaque raised node */
+  --hover-fill:   rgba(13, 20, 23, 0.04);                           /* row / tile / button hover lift */
+  --foot-line:    rgba(13, 20, 23, 0.24);                           /* footer progress rule */
+  --foot-cap:     rgba(13, 20, 23, 0.40);                           /* footer progress caps */
+
+  /* ---- effects (from tokens/effects.css) ---- */
+  /* signature gradient — deepened; the lightest stop still passes AA
+     as large gradient text on white. */
+  --grad:      linear-gradient(104deg, #0c8a8a 0%, #107aa2 44%, #345fc4 92%); /* @kind color */
+  --grad-soft: linear-gradient(104deg, #0c8a8a, #345fc4); /* @kind color */
+
+  /* dark dot-grid texture on the light canvas */
+  --dot:       radial-gradient(rgba(13,20,23,0.05) 1.3px, transparent 1.4px); /* @kind other */
+
+  /* a real (soft) drop shadow reads on light where alpha+glow did on dark */
+  --shadow-core: 0 18px 50px rgba(15,23,30,0.14), inset 0 0 0 1px rgba(13,20,23,0.05);
+
+  /* corner glows — softer teal / blue washes tuned for a white ground */
+  --glow:        radial-gradient(46% 50% at 8% 96%, rgba(15,140,140,0.10), transparent 70%),
+                 radial-gradient(40% 46% at 4% 70%, rgba(47,111,196,0.07), transparent 72%); /* @kind other */
+  --glow-center: radial-gradient(38% 44% at 70% 8%, rgba(15,140,140,0.10), transparent 70%),
+                 radial-gradient(46% 56% at 50% 108%, rgba(47,111,196,0.09), transparent 70%); /* @kind other */
+  --glow-warm:   radial-gradient(50% 56% at 92% 6%, rgba(15,140,140,0.10), transparent 70%),
+                 radial-gradient(44% 50% at 6% 96%, rgba(47,111,196,0.07), transparent 72%); /* @kind other */
+}
+
+/* ============================================================
+   Selector-level light fixes — the few spots that bake a raw
+   color (a glow geometry or a hard shadow) that a token swap alone
+   cannot reach. The handoff's white-PNG logo inverts are dropped:
+   this app carries NO brand PNGs — the sidebar/auth marks are inline
+   SVG/text authored against var(--ink), so they adapt on their own.
+   ============================================================ */
+
+/* auth brand-canvas glow (its own geometry) */
+[data-theme="light"] .auth-brand::after {
+  background:
+    radial-gradient(46% 44% at 12% 96%, rgba(15,140,140,0.10), transparent 70%),
+    radial-gradient(42% 40% at 0% 60%, rgba(47,111,196,0.08), transparent 72%);
+}
+
+/* hard black shadow → soft light-ground shadow (only the open mobile drawer,
+   the one shadowed element that exists in this app's markup) */
+[data-theme="light"] .app.nav-open .sidebar { box-shadow: 40px 0 90px -34px rgba(15,23,30,0.22); }

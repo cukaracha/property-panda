@@ -1,0 +1,67 @@
+/* ============================================================
+   "Measured" — Tailwind v4 theme mapping
+   Tailwind v4 is config-less; this @theme inline block exposes the raw
+   tokens (tokens.css) as Tailwind utility namespaces WITHOUT
+   re-emitting a second copy of each variable (that is what `inline`
+   does). The raw --ink* / --cyan / --panel* vars stay live for the
+   ported .cb-* / .cv-* / app-shell component CSS.
+
+   NOTE: the app-scale type sizes (--t-ui-*) are intentionally NOT
+   mapped — Tailwind's text-* namespace is also font-size and mapping
+   them would clobber Tailwind's scale. Size tokens remain available to
+   component CSS only.
+   ============================================================ */
+
+@theme inline {
+  /* ---------- Fonts (single family: Archivo; legacy aliases live) ---------- */
+  --font-sans:    var(--sans);
+  --font-display: var(--sans);
+  --font-body:    var(--sans);
+  --font-mono:    var(--mono);
+
+  /* ---------- Canvas & surfaces ---------- */
+  --color-canvas:   var(--bg);
+  --color-canvas-2: var(--bg-2);
+  --color-line:     var(--line);
+  --color-line-2:   var(--line-2);
+  --color-panel:    var(--panel);
+  --color-panel-2:  var(--panel-2);
+
+  /* ---------- Ink ramp ---------- */
+  --color-ink:   var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+
+  /* ---------- Brand family ---------- */
+  --color-cyan:   var(--cyan);
+  --color-teal:   var(--teal);
+  --color-blue:   var(--blue);
+  --color-indigo: var(--indigo);
+  --color-rose:   var(--rose);
+
+  /* ---------- Accent tints & aliases ---------- */
+  --color-accent-ink:  var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-rose-soft:   var(--rose-soft);
+  --color-rose-line:   var(--rose-line);
+  --color-presence:    var(--presence);
+
+  /* ---------- Radii ---------- */
+  --radius-control: var(--r-control);
+  --radius-surface: var(--r-surface);
+  --radius-panel:   var(--r-panel);
+  --radius-button:  var(--radius-button);
+  --radius-input:   var(--radius-input);
+  --radius-card:    var(--radius-card);
+  --radius-modal:   var(--radius-modal);
+
+  /* ---------- Shadows ---------- */
+  --shadow-pill:  var(--shadow-pill);
+  --shadow-panel: var(--shadow-panel);
+  --shadow-modal: var(--shadow-modal);
+
+  /* ---------- Motion ---------- */
+  --ease-out: var(--ease-out);
+}

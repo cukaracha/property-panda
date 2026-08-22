@@ -1,0 +1,79 @@
+/* ============================================================
+   "Measured" — content reader (dark)
+   Restyles the topic content path (.cv-main / .cv-article + the
+   .lesson markdown prose) to a centred ~768px article on the
+   near-black canvas, with a "Key idea" blockquote (cyan left-rule)
+   and a mono code/equation block on a raised well. Renders the raw
+   seed markdown (react-markdown), so it styles semantic tags directly.
+   ============================================================ */
+
+@layer components {
+
+  /* ---------- main column ---------- */
+  .cv-main { flex: 1; min-width: 0; padding: 34px 28px 96px; }
+  .cv-article { max-width: 768px; margin: 0 auto; }
+  .cv-crumb { margin-bottom: 30px; }
+  .topic-eyebrow {
+    font-size: 12px; font-weight: var(--w-semi); letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--cyan); margin-bottom: 12px;
+  }
+
+  /* ---------- lesson markdown prose ---------- */
+  .lesson h1 {
+    font-family: var(--sans); font-weight: var(--w-bold); font-size: 38px; line-height: 1.1;
+    letter-spacing: -0.03em; color: var(--ink); margin: 0 0 18px;
+  }
+  /* the bold Unit / Module / Staff meta line directly under the title */
+  .lesson h1 + p {
+    display: flex; flex-wrap: wrap; gap: 8px 20px;
+    font-size: 14px; line-height: 1.5; color: var(--ink-3);
+    padding-bottom: 26px; margin-bottom: 30px; border-bottom: 1px solid var(--line);
+  }
+  .lesson h1 + p strong { color: var(--ink-2); font-weight: var(--w-semi); }
+  /* the lead paragraph after the meta line */
+  .lesson h1 + p + p { font-size: 18px; line-height: 1.7; color: var(--ink); margin-bottom: 30px; }
+
+  .lesson h2 {
+    font-family: var(--sans); font-weight: var(--w-semi); font-size: 24px;
+    letter-spacing: -0.02em; color: var(--ink); margin: 38px 0 14px;
+  }
+  .lesson h3 { font-family: var(--sans); font-weight: var(--w-semi); font-size: 18px; color: var(--ink); margin: 26px 0 8px; }
+  .lesson p { font-size: 16px; line-height: 1.75; color: var(--ink-2); margin: 0 0 22px; }
+  .lesson ul, .lesson ol {
+    font-size: 16px; line-height: 1.7; color: var(--ink-2); margin: 0 0 22px;
+    padding-left: 22px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .lesson li { padding-left: 2px; }
+  .lesson strong { color: var(--ink); font-weight: var(--w-semi); }
+  .lesson em { font-style: italic; color: var(--ink-3); }
+  .lesson a { color: var(--cyan); text-decoration: underline; }
+
+  /* "Key idea" callout — markdown blockquote with a cyan left-rule */
+  .lesson blockquote {
+    margin: 30px 0; padding: 18px 22px;
+    border-left: 3px solid var(--cyan); background: var(--panel);
+    border-radius: 0 12px 12px 0;
+  }
+  .lesson blockquote p { font-size: 16.5px; line-height: 1.6; color: var(--ink); margin: 0; }
+  .lesson blockquote strong { color: var(--cyan); }
+
+  /* markdown code — inline spans and the fenced/indented equation block */
+  .lesson code { font-family: var(--mono); font-size: 0.92em; color: var(--ink); }
+  .lesson pre {
+    font-family: var(--mono); font-size: 16px; color: var(--ink);
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; margin: 0 0 22px; overflow-x: auto;
+  }
+  .lesson pre code { font-size: 16px; font-weight: var(--w-medium); letter-spacing: 0.02em; }
+
+  .lesson table { border-collapse: collapse; width: 100%; margin: 0 0 22px; font-size: 15px; }
+  .lesson th, .lesson td { border: 1px solid var(--line); padding: 10px 14px; text-align: left; color: var(--ink-2); }
+  .lesson th { background: var(--panel-2); color: var(--ink); font-weight: var(--w-semi); }
+  .lesson img { max-width: 100%; border-radius: 12px; border: 1px solid var(--line); display: block; }
+  .lesson hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+
+  @media (max-width: 768px) {
+    .cv-main { padding: 26px 22px 80px; }
+    .lesson h1 { font-size: 30px; }
+  }
+}

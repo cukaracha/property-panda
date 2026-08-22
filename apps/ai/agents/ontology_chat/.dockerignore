@@ -1,0 +1,4 @@
+# Trim the build context: the image COPYs only the entrypoint modules, tools/ and
+# prompts.json.
+**/__pycache__
+**/*.pyc

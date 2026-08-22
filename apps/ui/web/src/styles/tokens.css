@@ -1,0 +1,125 @@
+/* ============================================================
+   "Measured" — design tokens (dark)
+   Raw :root custom properties: the single source of truth for the
+   Learning Assistant brand. Ported from the design handoff
+   (samples/design_handoff_learning_assistant/_ds/…/tokens/*).
+   Exposed to Tailwind utility namespaces via theme.css
+   (@theme inline); consumed directly by the bespoke component CSS
+   (app.css / app-chat.css / app-content.css).
+   ============================================================ */
+
+/* Self-hosted Archivo (variable) — the single brand typeface.
+   No Google Fonts request; one woff2 covers the whole weight range. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62.5% 125%;
+  font-display: swap;
+  src: url('../assets/fonts/archivo-variable.woff2') format('woff2');
+}
+
+:root {
+  /* ---- canvas & surfaces (cool near-black, never pure #000) ---- */
+  --bg:   #050709;
+  --bg-2: #090c10;
+
+  /* ---- ink ramp (near-white -> muted) ---- */
+  --ink:   #f3f6f7;
+  --ink-2: #aab3b8;
+  --ink-3: #6c767c;
+  --ink-4: #454d52;
+
+  /* ---- hairlines & panels (white at low alpha, sit on the canvas) ---- */
+  --line:    rgba(255, 255, 255, 0.10);
+  --line-2:  rgba(255, 255, 255, 0.06);
+  --panel:   rgba(255, 255, 255, 0.022);
+  --panel-2: rgba(255, 255, 255, 0.04);
+
+  /* ---- brand family (teal -> cyan -> blue -> indigo, one warm rose) ---- */
+  --cyan:   #7fe3e3;   /* the single product accent */
+  --teal:   #38b2ad;
+  --blue:   #5f9fdd;
+  --indigo: #7d8fe0;
+  --rose:   #d98a9e;   /* reserved for urgency / risk only */
+
+  /* ---- semantic aliases ---- */
+  --accent:      var(--cyan);
+  --accent-ink:  #0a1416;   /* text on a cyan fill */
+  --accent-soft: color-mix(in srgb, var(--cyan) 11%, transparent);
+  --accent-line: color-mix(in srgb, var(--cyan) 34%, transparent);
+  --rose-soft:   color-mix(in srgb, var(--rose) 11%, transparent);
+  --rose-line:   color-mix(in srgb, var(--rose) 36%, transparent);
+  --presence:    #46c88a;   /* assistant presence dot */
+
+  /* ---- signature gradient (rationed: one hero moment per view) ---- */
+  --grad:      linear-gradient(104deg, #eafafa 0%, #7fe3e3 38%, #5f9fdd 92%);
+  --grad-soft: linear-gradient(104deg, #7fe3e3, #5f9fdd);
+
+  /* ---- dot-grid texture + mask (auth brand panel) ---- */
+  --dot:      radial-gradient(rgba(255, 255, 255, 0.05) 1.3px, transparent 1.4px);
+  --dot-size: 30px 30px;
+  --dot-mask: radial-gradient(120% 70% at 62% -8%, #000 0%, transparent 58%);
+
+  /* ---- typography (single family: Archivo; system mono) ---- */
+  --sans: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  /* legacy aliases kept live for shared components */
+  --font-display: var(--sans);
+  --font-body:    var(--sans);
+  --font-mono:    var(--mono);
+
+  --w-regular: 400;
+  --w-medium:  500;
+  --w-semi:    600;   /* the workhorse weight */
+  --w-bold:    700;
+
+  /* app-scale type ramp (15px base inside .app / .auth) */
+  --t-ui-2xs: 11px;
+  --t-ui-xs:  12px;
+  --t-ui-sm:  13px;
+  --t-ui-base: 14px;
+  --t-ui-md:  15px;
+  --t-ui-lg:  16px;
+  --t-ui-xl:  18px;
+  --t-ui-h3:  20px;
+  --t-ui-h2:  27px;
+  --t-ui-h1:  30px;
+  --t-ui-display: 48px;
+
+  --track-tight: -0.02em;
+  --track-snug:  -0.01em;
+  --track-label:  0.16em;
+  --lh-snug:    1.1;
+  --lh-body:    1.5;
+  --lh-reading: 1.62;
+
+  /* ---- radii ---- */
+  --r-control: 10px;   /* buttons, inputs, nav items */
+  --r-surface: 14px;   /* cards / paneled sections */
+  --r-panel:   20px;   /* chat panel & modals */
+  --r-pill:    999px;
+  /* legacy semantic aliases -> new values (keeps rounded-button/input/card/modal live) */
+  --radius-button: var(--r-control);
+  --radius-input:  var(--r-control);
+  --radius-card:   var(--r-surface);
+  --radius-modal:  var(--r-panel);
+
+  /* ---- app geometry ---- */
+  --sidebar-w: 268px;
+  --sidebar-w-collapsed: 76px;
+
+  /* ---- focus ring ---- */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--cyan) 20%, transparent);
+
+  /* ---- elevation (dark: reads on alpha + glow, not drop shadow) ---- */
+  --shadow-pill:  0 14px 40px -12px rgba(0, 0, 0, 0.7);
+  --shadow-panel: 0 30px 70px -18px rgba(0, 0, 0, 0.75);
+  --shadow-modal: 0 30px 80px -20px rgba(0, 0, 0, 0.82);
+
+  /* ---- motion ---- */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: var(--ease);   /* legacy alias, kept live */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+}

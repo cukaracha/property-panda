@@ -1,0 +1,18 @@
+# A2A subagent (server side). Vendored into the ARM64 "direct code deployment" zip
+# by apps/ai/agents/build_agent.sh (aarch64 cp312 wheels via --only-binary) — the
+# same zip build the chat agent uses.
+#
+# bedrock-agentcore[a2a] pulls a2a-sdk[http-server] (Starlette + uvicorn + SSE) that
+# serve_a2a needs. strands-agents ships the strands.multiagent.a2a executor code; its
+# a2a imports are satisfied by a2a-sdk. Pin a2a-sdk to the SAME range as the chat
+# orchestrator (ai/agents/chat/requirements.txt) so client and server never drift
+# across an incompatible a2a-sdk major.
+#
+# bedrock-agentcore is PINNED to ==1.15.0 (the version vendored into the chat agent's
+# zip) for reproducible builds: an unpinned install let header-forwarding / identity
+# behaviour shift between rebuilds — the root of the "worked once, then stopped" bug.
+# This version provides bedrock_agentcore.identity.auth.requires_access_token (M2M).
+strands-agents
+bedrock-agentcore[a2a]==1.15.0
+a2a-sdk>=0.3,<0.4
+boto3

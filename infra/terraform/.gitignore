@@ -1,0 +1,15 @@
+# Terraform state — may contain secrets, never commit (S3 backend is the source of truth)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Backend config is passed inline via tf-init.sh, so ignore any generated override file
+*.tfbackend
+
+# Build artifacts (Lambda/layer zips produced by archive_file)
+build/
+*.zip
+
+# Keep the provider lock file committed (do NOT ignore .terraform.lock.hcl)

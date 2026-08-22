@@ -1,0 +1,12 @@
+# Ontology agent. Installed into the ARM64 container image (Dockerfile, built by
+# apps/ai/agents/build_agent_container.sh), not a zip: claude-agent-sdk shells out
+# to a `claude` CLI the image has to carry, which puts the bundle over the zip
+# ceiling. pip resolves native wheels for the image's linux/arm64 platform at build.
+claude-agent-sdk
+bedrock-agentcore
+boto3
+# numpy backs the persisted .npy vector indexes; scipy's linkage/fcluster produce
+# the consolidation clustering suggestions. Same two heavy deps the retired
+# container worker carried.
+numpy
+scipy

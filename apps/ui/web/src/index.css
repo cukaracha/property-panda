@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/theme.css";
+@import "./styles/app.css";
+@import "./styles/app-chat.css";
+@import "./styles/app-content.css";
+/* Light theme LAST: it re-points the same token names under [data-theme="light"].
+   :root and [data-theme="light"] are equal specificity, so light wins by source
+   order — never by raising specificity. */
+@import "./styles/themes.css";
+
+/* ============================================================
+   Base document — the "Measured" canvas (dark by default).
+   Near-black background, near-white Archivo type, one cyan accent.
+   Layouts are full-width; the app shell owns its own scrolling.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+  font-family: var(--sans);
+  line-height: var(--lh-body);
+  color: var(--ink-2);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body { margin: 0; }
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--sans);
+  font-weight: var(--w-semi);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--track-tight);
+  margin: 0;
+}
+
+p { margin: 0; }
+
+/* No hover underlines by default — interactive surfaces (nav items, tiles,
+   buttons-as-links) carry their own hover treatment. Plain text links that
+   have no other hover cue opt back in (.link, breadcrumb links). */
+a { text-decoration: none; }
+
+/* Element default COLORS live in @layer base so Tailwind utility colors win.
+   `@import "tailwindcss"` puts utilities in @layer utilities; unlayered rules
+   beat ALL layered rules regardless of specificity, so an unlayered
+   `h1 { color }` / `a { color }` would silently override `text-ink` etc.
+   Keeping only the colour here — not margin/font — fixes that without
+   shifting any spacing. */
+@layer base {
+  h1, h2, h3, h4, h5, h6 { color: var(--ink); }
+  a { color: var(--cyan); }
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+/* In @layer base so component rules (e.g. .btn:focus-visible with the cyan
+   box-shadow ring + outline:none) can override it — an unlayered rule would
+   double every ring with this outline. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent-line);
+    outline-offset: 2px;
+  }
+}
+
+/* ============================================================
+   Scrollbars — theme-aware. The track is transparent so it matches
+   whatever surface it sits on in both light and dark; the thumb uses
+   the hairline token and carries a transparent padding border so it
+   reads as inset. Kept unlayered so it applies app-wide.
+   ============================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4);
+  background-clip: padding-box;
+}

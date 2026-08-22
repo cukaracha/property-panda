@@ -1,0 +1,986 @@
+{
+  "Comment": "Carry a source build's reusable artifacts forward if this is a corpus update, convert every uploaded document to markdown, segment it into pages, then build the graph and the page index concurrently. CarryForward is a no-op for an ordinary build and copies a kept document's markdown and extracted elements into this build's prefix for an update, which is what lets Convert run over only the added documents and PlanExtract leave the carried pages out of the fan-out. It returns the state's own input so a carried document that never converted can be appended to docKeys and retried here, and it catches to FailSegment for the same reason Segment does: it is outside the Parallel. Every fan-out is a Distributed Map, so a branch's polling and retries live in a child execution instead of the parent's 25,000-event history. Convert is one branch per document: trigger the async converter, poll its job row until terminal, and record only the outcome, because the converted markdown is discovered by listing the build's own silver prefix rather than threaded back through state. A document that will not convert degrades the build to partial rather than ending it, so every branch ends in a Pass state and the Map tolerates 100% branch failure. Each branch bumps a counter on the job row before it ends, and a failing one also appends its own key, because nothing else writes while the Map runs and the fan-in that tallies conversions only reports once every document is already terminal; both writes are diagnostic and catch to their Pass state, so a counter that cannot be written can never fail a document that converted, and concurrent branches can lose an append, so Segment overwrites that list with the set it actually observed. Segment is deterministic and runs once per conversion pass, because both branches after it read the pages it writes, and it is the only stage outside the Parallel, so it catches to its own fail state rather than the graph branch's. A build that lost a document to conversion then stops at AwaitReview, which is the pipeline's one human-in-the-loop gate: it holds a task token on the job row and waits for the user to retry those documents, drop them and build anyway, or stop. The gate sits after Segment rather than after the Map so it opens with the failures already named and tallied, and because segmentation costs seconds while everything inside BuildAndIndex costs hours; it is guarded on the page count as well as the failure count, so a build where nothing converted, which Segment has already failed, is never parked waiting for an answer that could not help it. A retry loops back to Convert through PrepareRetry, which rebuilds the Map's input from the job row because Segment's OutputPath discards the execution input on the way past, and Segment then runs again over a silver prefix that now holds both passes' markdown. Everything that ends the gate badly, which is a stop, a Lambda that could not record the token, and the day-long wait expiring, lands on the same Catch and the same fail state. The graph branch then owns the whole pipeline: it fans EXTRACT out one page per branch, because batch size cannot buy throughput once a corpus is larger than the concurrency and can only serialize a small one, sweeps whatever is still missing behind a widening backoff, compacts the elements once, hands CONSOLIDATE to the agent and waits on the job row for it, then canonicalizes and emits. CONSOLIDATE is two concurrent designs inside that one agent invocation, types and predicates, so the poll loop still watches exactly one attribute and the state machine cannot tell the difference. Both poll waits are 5 seconds and both attempt ceilings are sized against that interval, so the timeouts the failure causes quote stay where they were while a fast stage is noticed quickly. Both branches end in Succeed because a Parallel cancels its siblings the moment one fails, and a graph failure must not abandon hydration half written.",
+  "StartAt": "CarryForward",
+  "TimeoutSeconds": 172800,
+  "States": {
+    "CarryForward": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${carry_forward_arn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "TimeoutSeconds": 900,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.TooManyRequestsException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 4,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailSegment"
+        }
+      ],
+      "Next": "Convert"
+    },
+    "Convert": {
+      "Type": "Map",
+      "ItemsPath": "$.docKeys",
+      "MaxConcurrency": 15,
+      "ToleratedFailurePercentage": 100,
+      "ItemSelector": {
+        "key.$": "$$.Map.Item.Value",
+        "jobId.$": "$.jobId",
+        "inputBucket.$": "$.inputBucket",
+        "outputS3Prefix.$": "$.outputS3Prefix",
+        "attempts": 0
+      },
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
+        },
+        "StartAt": "TriggerConvert",
+        "States": {
+          "TriggerConvert": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${converter_trigger_arn}",
+              "Payload": {
+                "body.$": "States.JsonToString($)"
+              }
+            },
+            "ResultSelector": {
+              "response.$": "States.StringToJson($.Payload.body)"
+            },
+            "ResultPath": "$.trigger",
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.TooManyRequestsException",
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 4,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "RecordConvertFailed"
+              }
+            ],
+            "Next": "WaitForConvert"
+          },
+          "WaitForConvert": {
+            "Type": "Wait",
+            "Seconds": 5,
+            "Next": "CountAttempt"
+          },
+          "CountAttempt": {
+            "Type": "Pass",
+            "Parameters": {
+              "key.$": "$.key",
+              "jobId.$": "$.jobId",
+              "inputBucket.$": "$.inputBucket",
+              "outputS3Prefix.$": "$.outputS3Prefix",
+              "trigger.$": "$.trigger",
+              "attempts.$": "States.MathAdd($.attempts, 1)"
+            },
+            "Next": "CheckAttempts"
+          },
+          "CheckAttempts": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.attempts",
+                "NumericGreaterThan": 360,
+                "Next": "RecordConvertFailed"
+              }
+            ],
+            "Default": "GetConvertStatus"
+          },
+          "GetConvertStatus": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:dynamodb:getItem",
+            "Parameters": {
+              "TableName": "${converter_job_table}",
+              "Key": {
+                "jobId": {
+                  "S.$": "$.trigger.response.jobId"
+                }
+              }
+            },
+            "ResultPath": "$.job",
+            "Retry": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 3,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": "$.error",
+                "Next": "RecordConvertFailed"
+              }
+            ],
+            "Next": "ConvertDone"
+          },
+          "ConvertDone": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.job.Item.status.S",
+                "StringEquals": "succeeded",
+                "Next": "RecordConvertSucceeded"
+              },
+              {
+                "Variable": "$.job.Item.status.S",
+                "StringEquals": "failed",
+                "Next": "RecordConvertFailed"
+              }
+            ],
+            "Default": "WaitForConvert"
+          },
+          "RecordConvertSucceeded": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+            "Parameters": {
+              "TableName": "${ontology_job_table}",
+              "Key": {
+                "jobId": {
+                  "S.$": "$.jobId"
+                }
+              },
+              "UpdateExpression": "SET convertProgress.done = if_not_exists(convertProgress.done, :zero) + :one",
+              "ExpressionAttributeValues": {
+                ":zero": {
+                  "N": "0"
+                },
+                ":one": {
+                  "N": "1"
+                }
+              }
+            },
+            "ResultPath": null,
+            "Retry": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": null,
+                "Next": "ConvertSucceeded"
+              }
+            ],
+            "Next": "ConvertSucceeded"
+          },
+          "RecordConvertFailed": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:dynamodb:updateItem",
+            "Parameters": {
+              "TableName": "${ontology_job_table}",
+              "Key": {
+                "jobId": {
+                  "S.$": "$.jobId"
+                }
+              },
+              "UpdateExpression": "SET convertProgress.done = if_not_exists(convertProgress.done, :zero) + :one, convertProgress.failed = if_not_exists(convertProgress.failed, :zero) + :one, failedDocKeys = list_append(if_not_exists(failedDocKeys, :empty), :key)",
+              "ExpressionAttributeValues": {
+                ":zero": {
+                  "N": "0"
+                },
+                ":one": {
+                  "N": "1"
+                },
+                ":empty": {
+                  "L": []
+                },
+                ":key": {
+                  "L": [
+                    {
+                      "S.$": "$.key"
+                    }
+                  ]
+                }
+              }
+            },
+            "ResultPath": null,
+            "Retry": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 3,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": ["States.ALL"],
+                "ResultPath": null,
+                "Next": "ConvertFailed"
+              }
+            ],
+            "Next": "ConvertFailed"
+          },
+          "ConvertSucceeded": {
+            "Type": "Pass",
+            "Parameters": {
+              "docKey.$": "$.key",
+              "status": "succeeded"
+            },
+            "End": true
+          },
+          "ConvertFailed": {
+            "Type": "Pass",
+            "Parameters": {
+              "docKey.$": "$.key",
+              "status": "failed"
+            },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.convertResults",
+      "Next": "Segment"
+    },
+    "Segment": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${segment_build_arn}",
+        "Payload": {
+          "jobId.$": "$.jobId",
+          "outputS3Prefix.$": "$.outputS3Prefix",
+          "convertResults.$": "$.convertResults"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "TimeoutSeconds": 900,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.TooManyRequestsException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 4,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailSegment"
+        }
+      ],
+      "Next": "NeedsReview"
+    },
+    "NeedsReview": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.pages",
+              "NumericGreaterThan": 0
+            },
+            {
+              "Variable": "$.failedCount",
+              "NumericGreaterThan": 0
+            }
+          ],
+          "Next": "AwaitReview"
+        }
+      ],
+      "Default": "BuildAndIndex"
+    },
+    "AwaitReview": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${await_review_arn}",
+        "Payload": {
+          "jobId.$": "$.jobId",
+          "taskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.review",
+      "TimeoutSeconds": 86400,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailSegment"
+        }
+      ],
+      "Next": "ReviewChoice"
+    },
+    "ReviewChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.review.action",
+          "StringEquals": "retry",
+          "Next": "PrepareRetry"
+        }
+      ],
+      "Default": "BuildAndIndex"
+    },
+    "PrepareRetry": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${prepare_retry_arn}",
+        "Payload": {
+          "jobId.$": "$.jobId"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "TimeoutSeconds": 120,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.TooManyRequestsException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 4,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailSegment"
+        }
+      ],
+      "Next": "Convert"
+    },
+    "FailSegment": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${fail_build_arn}",
+        "Payload": {
+          "jobId.$": "$.jobId",
+          "error.$": "$.error"
+        }
+      },
+      "ResultPath": null,
+      "TimeoutSeconds": 60,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.failError",
+          "Next": "BuildStopped"
+        }
+      ],
+      "Next": "BuildStopped"
+    },
+    "BuildStopped": {
+      "Type": "Fail",
+      "Error": "BuildStoppedBeforeExtract",
+      "Cause": "The build was stopped before extraction, either because the converted documents could not be segmented into pages or because the conversion review was answered with a stop. The job row carries the reason the user is shown."
+    },
+    "BuildAndIndex": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "HasPagesToExtract",
+          "States": {
+            "HasPagesToExtract": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.pages",
+                  "NumericGreaterThan": 0,
+                  "Next": "InitExtract"
+                }
+              ],
+              "Default": "NothingToBuild"
+            },
+            "NothingToBuild": {
+              "Type": "Succeed"
+            },
+            "InitExtract": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "pass": 0
+              },
+              "Next": "PlanExtract"
+            },
+            "PlanExtract": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${plan_extract_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId",
+                  "pass.$": "$.pass"
+                }
+              },
+              "OutputPath": "$.Payload",
+              "TimeoutSeconds": 300,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.TooManyRequestsException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 4,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "MorePagesToExtract"
+            },
+            "MorePagesToExtract": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.pendingCount",
+                      "NumericGreaterThan": 0
+                    },
+                    {
+                      "Variable": "$.passesLeft",
+                      "NumericGreaterThan": 0
+                    }
+                  ],
+                  "Next": "ExtractPages"
+                }
+              ],
+              "Default": "CompactElements"
+            },
+            "ExtractPages": {
+              "Type": "Map",
+              "MaxConcurrency": 20,
+              "ToleratedFailurePercentage": 100,
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:getObject",
+                "ReaderConfig": {
+                  "InputType": "JSON"
+                },
+                "Parameters": {
+                  "Bucket.$": "$.pendingBucket",
+                  "Key.$": "$.pendingKey"
+                }
+              },
+              "ItemBatcher": {
+                "MaxItemsPerBatch": 1,
+                "BatchInput": {
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "STANDARD"
+                },
+                "StartAt": "ExtractBatch",
+                "States": {
+                  "ExtractBatch": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${extract_pages_arn}",
+                      "Payload.$": "$"
+                    },
+                    "Retry": [
+                      {
+                        "ErrorEquals": [
+                          "Lambda.TooManyRequestsException",
+                          "Lambda.ServiceException",
+                          "Lambda.AWSLambdaException",
+                          "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 15,
+                        "MaxAttempts": 3,
+                        "BackoffRate": 2.0
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "ResultWriter": {
+                "Resource": "arn:aws:states:::s3:putObject",
+                "Parameters": {
+                  "Bucket": "${gold_bucket}",
+                  "Prefix": "map-results/extract"
+                }
+              },
+              "ResultPath": null,
+              "Next": "NextExtractPass"
+            },
+            "NextExtractPass": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "pass.$": "States.MathAdd($.pass, 1)",
+                "nextWaitSeconds.$": "$.nextWaitSeconds"
+              },
+              "Next": "BackoffBeforeSweep"
+            },
+            "BackoffBeforeSweep": {
+              "Type": "Wait",
+              "SecondsPath": "$.nextWaitSeconds",
+              "Next": "PlanExtract"
+            },
+            "CompactElements": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${compact_elements_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "OutputPath": "$.Payload",
+              "TimeoutSeconds": 900,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.TooManyRequestsException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 4,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "StartAgent"
+            },
+            "StartAgent": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${start_agent_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "ResultPath": null,
+              "TimeoutSeconds": 120,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.TooManyRequestsException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 4,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "InitConsolidatePoll"
+            },
+            "InitConsolidatePoll": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "attempts": 0
+              },
+              "Next": "WaitForConsolidate"
+            },
+            "WaitForConsolidate": {
+              "Type": "Wait",
+              "Seconds": 5,
+              "Next": "CountConsolidateAttempt"
+            },
+            "CountConsolidateAttempt": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "attempts.$": "States.MathAdd($.attempts, 1)"
+              },
+              "Next": "CheckConsolidateAttempts"
+            },
+            "CheckConsolidateAttempts": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.attempts",
+                  "NumericGreaterThan": 1440,
+                  "Next": "ConsolidateTimedOut"
+                }
+              ],
+              "Default": "GetAgentStatus"
+            },
+            "GetAgentStatus": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::aws-sdk:dynamodb:getItem",
+              "Parameters": {
+                "TableName": "${ontology_job_table}",
+                "ConsistentRead": true,
+                "Key": {
+                  "jobId": {
+                    "S.$": "$.jobId"
+                  }
+                }
+              },
+              "ResultPath": "$.job",
+              "Retry": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "ConsolidateDone"
+            },
+            "ConsolidateDone": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.job.Item.agentStatus",
+                      "IsPresent": true
+                    },
+                    {
+                      "Variable": "$.job.Item.agentStatus.S",
+                      "StringEquals": "consolidated"
+                    }
+                  ],
+                  "Next": "Canonicalize"
+                },
+                {
+                  "And": [
+                    {
+                      "Variable": "$.job.Item.agentStatus",
+                      "IsPresent": true
+                    },
+                    {
+                      "Variable": "$.job.Item.agentStatus.S",
+                      "StringEquals": "failed"
+                    }
+                  ],
+                  "Next": "ConsolidateFailed"
+                }
+              ],
+              "Default": "WaitForConsolidate"
+            },
+            "ConsolidateTimedOut": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "error": {
+                  "Error": "ConsolidateTimedOut",
+                  "Cause": "CONSOLIDATE did not report a result within two hours, so the build was stopped."
+                }
+              },
+              "Next": "FailBuild"
+            },
+            "ConsolidateFailed": {
+              "Type": "Pass",
+              "Parameters": {
+                "jobId.$": "$.jobId",
+                "error": {
+                  "Error": "ConsolidateFailed",
+                  "Cause": "The agent could not consolidate the extracted vocabulary into a schema."
+                }
+              },
+              "Next": "FailBuild"
+            },
+            "Canonicalize": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${canonicalize_build_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "OutputPath": "$.Payload",
+              "TimeoutSeconds": 900,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.TooManyRequestsException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 4,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "Emit"
+            },
+            "Emit": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${emit_build_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "OutputPath": "$.Payload",
+              "TimeoutSeconds": 900,
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.TooManyRequestsException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 4,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "FailBuild"
+                }
+              ],
+              "Next": "GraphDone"
+            },
+            "GraphDone": {
+              "Type": "Succeed"
+            },
+            "FailBuild": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${fail_build_arn}",
+                "Payload": {
+                  "jobId.$": "$.jobId",
+                  "error.$": "$.error"
+                }
+              },
+              "ResultPath": null,
+              "TimeoutSeconds": 60,
+              "Retry": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.failError",
+                  "Next": "GraphStopped"
+                }
+              ],
+              "Next": "GraphStopped"
+            },
+            "GraphStopped": {
+              "Type": "Succeed"
+            }
+          }
+        },
+        {
+          "StartAt": "HasPages",
+          "States": {
+            "HasPages": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.pages",
+                  "NumericGreaterThan": 0,
+                  "Next": "HydratePages"
+                }
+              ],
+              "Default": "NothingToIndex"
+            },
+            "NothingToIndex": {
+              "Type": "Succeed"
+            },
+            "HydratePages": {
+              "Type": "Map",
+              "MaxConcurrency": 10,
+              "ItemReader": {
+                "Resource": "arn:aws:states:::s3:getObject",
+                "ReaderConfig": {
+                  "InputType": "JSON"
+                },
+                "Parameters": {
+                  "Bucket.$": "$.manifestBucket",
+                  "Key.$": "$.manifestKey"
+                }
+              },
+              "ItemBatcher": {
+                "MaxItemsPerBatch": 25,
+                "BatchInput": {
+                  "mode": "hydrate",
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "ItemProcessor": {
+                "ProcessorConfig": {
+                  "Mode": "DISTRIBUTED",
+                  "ExecutionType": "STANDARD"
+                },
+                "StartAt": "HydrateBatch",
+                "States": {
+                  "HydrateBatch": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${hydrate_index_arn}",
+                      "Payload.$": "$"
+                    },
+                    "Retry": [
+                      {
+                        "ErrorEquals": [
+                          "Lambda.TooManyRequestsException",
+                          "Lambda.ServiceException",
+                          "Lambda.AWSLambdaException",
+                          "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 5,
+                        "MaxAttempts": 4,
+                        "BackoffRate": 2.0
+                      }
+                    ],
+                    "End": true
+                  }
+                }
+              },
+              "ResultWriter": {
+                "Resource": "arn:aws:states:::s3:putObject",
+                "Parameters": {
+                  "Bucket": "${gold_bucket}",
+                  "Prefix": "map-results/hydrate"
+                }
+              },
+              "ResultPath": null,
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "MarkIndexFailed"
+                }
+              ],
+              "Next": "MarkIndexReady"
+            },
+            "MarkIndexReady": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${hydrate_index_arn}",
+                "Payload": {
+                  "mode": "finalize",
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "Next": "IndexDone"
+            },
+            "MarkIndexFailed": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${hydrate_index_arn}",
+                "Payload": {
+                  "mode": "fail",
+                  "jobId.$": "$.jobId"
+                }
+              },
+              "Next": "IndexStopped"
+            },
+            "IndexDone": {
+              "Type": "Succeed"
+            },
+            "IndexStopped": {
+              "Type": "Succeed"
+            }
+          }
+        }
+      ],
+      "End": true
+    }
+  }
+}

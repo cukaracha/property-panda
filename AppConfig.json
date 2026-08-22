@@ -1,0 +1,15 @@
+{
+  "stage": "dev",
+  "region": "us-east-1",
+  "appName": "sample-agentic-app",
+  "displayName": "JustifyAI",
+  "domainName": "sample.demo.justifyai.com",
+  "certificateArn": "arn:aws:acm:us-east-1:109542136611:certificate/cef35922-3530-4918-a51d-51d0501b8d95",
+  "allowedOrigins": ["http://localhost:3000", "https://sample.demo.justifyai.com"],
+  "approvedEmailDomains": ["example.com"],
+  "seedDemoUsers": true,
+  "federatedIdp": {
+    "issuerUrl": "https://login.microsoftonline.com/5571ebeb-2d90-462c-9e3d-1db5b8dc0b28/v2.0",
+    "clientId": "5d49aea3-664f-41d2-9e90-4ce68364fb2d"
+  }
+}

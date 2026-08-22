@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#050709" />
+    <!-- No-flash theme: apply the persisted theme to <html data-theme> before the
+         first paint. The 'app-theme' key MUST match APP_THEME_KEY in
+         src/config/app.ts and the useTheme hook. Default is light. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('app-theme');
+          document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+    <!-- The typeface (Archivo variable) is self-hosted via
+         src/styles/tokens.css — no external font request. -->
+    <title>Sample Agentic App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

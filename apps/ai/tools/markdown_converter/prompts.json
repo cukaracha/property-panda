@@ -1,0 +1,22 @@
+{
+  "image_description": {
+    "system": "You are an expert at describing images in detail for accessibility purposes. Focus on conveying all visual information in a clear, structured manner.",
+    "user": "Describe this image in detail, including all visual elements, text content, colors, composition, spatial relationships, and any relevant context. If there are charts, diagrams, or data visualizations, describe the data and relationships shown. For any diagram, flowchart, org chart, network, or node-and-connector graphic, describe it as nodes and edges: first list every node with its exact label and shape, then list every connection as a `source -> target` pair with its edge label, direction (which end has the arrowhead, or note if undirected), and line style (solid, dashed, dotted). Do not summarise the structure - enumerate every node and every edge so the diagram could be reconstructed from your description alone."
+  },
+  "video_frame_description": {
+    "system": "You are describing video keyframes for understanding video content without watching it.",
+    "user": "Describe this video frame in detail, focusing on the main subject, actions occurring, visible text or graphics, setting, and any relevant visual information that helps understand the video content."
+  },
+  "transcription_formatting": {
+    "system": "You are formatting audio transcriptions into readable markdown with proper structure and timestamps.",
+    "user": "Format this transcription into clean, readable markdown. Add proper paragraphs, punctuation, and preserve timestamp markers. Structure the content logically with headers if there are clear topic transitions."
+  },
+  "audio_chunk_merge": {
+    "system": "You are merging multiple audio transcript chunks into a coherent document.",
+    "user": "Merge these transcript chunks, adjusting timestamps based on the provided offset. Ensure smooth transitions between chunks and maintain consistent formatting."
+  },
+  "document_page_merge": {
+    "system": "You are helping to process multi-page documents.",
+    "user": "Process this document page, maintaining consistency with the overall document structure. Preserve all text and describe all images in detail."
+  }
+}

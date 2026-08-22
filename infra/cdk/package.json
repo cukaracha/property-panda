@@ -1,0 +1,25 @@
+{
+  "name": "sample-agentic-app-infra",
+  "version": "0.1.0",
+  "description": "CDK infrastructure for Sample Agentic App",
+  "bin": {
+    "sample-agentic-app-infra": "bin/infra.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "@types/node": "20.2.5",
+    "aws-cdk": "^2.1129.0",
+    "ts-node": "^10.9.1",
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.261.0",
+    "constructs": "^10.4.2",
+    "source-map-support": "^0.5.21"
+  }
+}
