@@ -13,6 +13,7 @@ import {
   DISTANCE_TO_MRT_OPTIONS,
   DISTRICT_OPTIONS,
   FLOOR_LEVEL_OPTIONS,
+  formatThousands,
   FURNISHING_OPTIONS,
   KEYWORD_MAX_LENGTH,
   LAST_POSTED_OPTIONS,
@@ -23,6 +24,7 @@ import {
   PROJECT_FEATURE_OPTIONS,
   PROPERTY_TYPE_OPTIONS,
   SORT_OPTIONS,
+  stripThousands,
   TENURE_OPTIONS,
   UNIT_FEATURE_OPTIONS,
   toggleOption,
@@ -39,6 +41,8 @@ interface RangeField {
   min: keyof FilterFormState;
   max: keyof FilterFormState;
   label: string;
+  /** False for a calendar year, which must never render as "2,003". */
+  thousands: boolean;
 }
 
 type CodeListKey =
@@ -52,29 +56,29 @@ type CodeListKey =
   | 'listingFeatures';
 
 const PRIMARY_RANGE_FIELDS: RangeField[] = [
-  { min: 'minPrice', max: 'maxPrice', label: 'Price' },
-  { min: 'minSize', max: 'maxSize', label: 'Floor area in sqft' },
+  { min: 'minPrice', max: 'maxPrice', label: 'Price', thousands: true },
+  { min: 'minSize', max: 'maxSize', label: 'Floor area in sqft', thousands: true },
+  { min: 'minTop', max: 'maxTop', label: 'TOP year', thousands: false },
 ];
 
 const MORE_RANGE_FIELDS: RangeField[] = [
-  { min: 'minTop', max: 'maxTop', label: 'TOP year' },
-  { min: 'minPsf', max: 'maxPsf', label: 'Price per sqft' },
+  { min: 'minPsf', max: 'maxPsf', label: 'Price per sqft', thousands: true },
 ];
 
 // Everything behind the "More filters" toggle, so the button can say how many of them
 // are set. A filter the user cannot see is worse than no filter at all.
 const MORE_FILTER_KEYS: (keyof FilterFormState)[] = [
-  'minTop',
-  'maxTop',
   'minPsf',
   'maxPsf',
+  'bedrooms',
   'bathrooms',
-  'tenureCode',
+  'districtCode',
   'floorLevel',
   'furnishing',
   'unitFeatures',
   'projectFeatures',
   'listingFeatures',
+  'lastPosted',
   'distanceToMrt',
   'keyword',
 ];
@@ -87,12 +91,12 @@ function countActive(form: FilterFormState, keys: (keyof FilterFormState)[]): nu
 }
 
 /**
- * The search form. Text ranges stay strings until the request is built, and the
+ * The search form. Ranges stay raw digit strings until the request is built, and the
  * multi choice filters are toggle chips.
  *
- * The split mirrors PropertyGuru's own: the filters most searches use stay on screen
- * and the long tail sits behind a "More filters" toggle, because showing all fourteen
- * groups at once buries the search button.
+ * The filters most searches start from stay on screen and the long tail sits behind a
+ * "More filters" toggle, because showing all fourteen groups at once buries the search
+ * button.
  */
 export default function SearchFilterPanel({
   form,
@@ -113,26 +117,31 @@ export default function SearchFilterPanel({
 
   const moreCount = countActive(form, MORE_FILTER_KEYS);
 
+  // The separators are a display concern only: the form keeps the raw digits, so a
+  // number never reaches the request body wearing a comma.
+  const rangeValue = (field: RangeField, key: keyof FilterFormState) =>
+    field.thousands ? formatThousands(String(form[key])) : String(form[key]);
+
   const renderRanges = (fields: RangeField[]) =>
     fields.map(field => (
       <div key={field.label}>
         <p className='type-ui-eyebrow mb-1.5'>{field.label}</p>
         <div className='flex items-center gap-2'>
           <Input
-            type='number'
+            type='text'
             inputMode='numeric'
             placeholder='Min'
             aria-label={`Minimum ${field.label.toLowerCase()}`}
-            value={String(form[field.min])}
-            onChange={event => setField(field.min, event.target.value)}
+            value={rangeValue(field, field.min)}
+            onChange={event => setField(field.min, stripThousands(event.target.value))}
           />
           <Input
-            type='number'
+            type='text'
             inputMode='numeric'
             placeholder='Max'
             aria-label={`Maximum ${field.label.toLowerCase()}`}
-            value={String(form[field.max])}
-            onChange={event => setField(field.max, event.target.value)}
+            value={rangeValue(field, field.max)}
+            onChange={event => setField(field.max, stripThousands(event.target.value))}
           />
         </div>
       </div>
@@ -148,7 +157,9 @@ export default function SearchFilterPanel({
         </Button>
       </div>
 
-      <div className='mt-4 grid gap-4 sm:grid-cols-2'>{renderRanges(PRIMARY_RANGE_FIELDS)}</div>
+      <div className='mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
+        {renderRanges(PRIMARY_RANGE_FIELDS)}
+      </div>
 
       <div className='mt-4 space-y-4'>
         <FilterChipGroup
@@ -158,16 +169,10 @@ export default function SearchFilterPanel({
           onToggle={value => toggleCode('propertyTypeCode', value)}
         />
         <FilterChipGroup
-          label='Bedrooms'
-          options={BEDROOM_OPTIONS}
-          selected={form.bedrooms}
-          onToggle={value => toggleCount('bedrooms', value)}
-        />
-        <FilterChipGroup
-          label='District'
-          options={DISTRICT_OPTIONS}
-          selected={form.districtCode}
-          onToggle={value => toggleCode('districtCode', value)}
+          label='Tenure'
+          options={TENURE_OPTIONS}
+          selected={form.tenureCode}
+          onToggle={value => toggleCode('tenureCode', value)}
         />
       </div>
 
@@ -184,16 +189,22 @@ export default function SearchFilterPanel({
           <div className='grid gap-4 sm:grid-cols-2'>{renderRanges(MORE_RANGE_FIELDS)}</div>
 
           <FilterChipGroup
+            label='Bedrooms'
+            options={BEDROOM_OPTIONS}
+            selected={form.bedrooms}
+            onToggle={value => toggleCount('bedrooms', value)}
+          />
+          <FilterChipGroup
             label='Bathrooms'
             options={BATHROOM_OPTIONS}
             selected={form.bathrooms}
             onToggle={value => toggleCount('bathrooms', value)}
           />
           <FilterChipGroup
-            label='Tenure'
-            options={TENURE_OPTIONS}
-            selected={form.tenureCode}
-            onToggle={value => toggleCode('tenureCode', value)}
+            label='District'
+            options={DISTRICT_OPTIONS}
+            selected={form.districtCode}
+            onToggle={value => toggleCode('districtCode', value)}
           />
           <FilterChipGroup
             label='Floor level'
@@ -228,6 +239,21 @@ export default function SearchFilterPanel({
 
           <div className='grid gap-4 sm:grid-cols-2'>
             <div>
+              <p className='type-ui-eyebrow mb-1.5'>Listed</p>
+              <DropdownMenu
+                aria-label='Listed within'
+                value={form.lastPosted}
+                onChange={event => setField('lastPosted', event.target.value)}
+              >
+                <option value=''>Any date</option>
+                {LAST_POSTED_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </DropdownMenu>
+            </div>
+            <div>
               <p className='type-ui-eyebrow mb-1.5'>Distance to MRT or LRT</p>
               <DropdownMenu
                 aria-label='Distance to MRT or LRT'
@@ -242,7 +268,7 @@ export default function SearchFilterPanel({
                 ))}
               </DropdownMenu>
             </div>
-            <div>
+            <div className='sm:col-span-2'>
               <p className='type-ui-eyebrow mb-1.5'>Keyword</p>
               <Input
                 type='text'
@@ -257,22 +283,7 @@ export default function SearchFilterPanel({
         </div>
       )}
 
-      <div className='mt-4 grid gap-4 sm:grid-cols-4'>
-        <div>
-          <p className='type-ui-eyebrow mb-1.5'>Listed</p>
-          <DropdownMenu
-            aria-label='Listed within'
-            value={form.lastPosted}
-            onChange={event => setField('lastPosted', event.target.value)}
-          >
-            <option value=''>Any date</option>
-            {LAST_POSTED_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </DropdownMenu>
-        </div>
+      <div className='mt-4 grid gap-4 sm:grid-cols-3'>
         <div>
           <p className='type-ui-eyebrow mb-1.5'>Sort by</p>
           <DropdownMenu

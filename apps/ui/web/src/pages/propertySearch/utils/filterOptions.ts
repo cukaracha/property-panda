@@ -205,6 +205,27 @@ export function toggleOption<T>(selected: T[], value: T): T[] {
   return selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value];
 }
 
+/**
+ * Reduce what the user typed back to the digits the form state holds, so the
+ * separators the panel renders never reach the request body.
+ */
+export function stripThousands(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const [whole, ...rest] = cleaned.split('.');
+  return rest.length > 0 ? `${whole}.${rest.join('')}` : whole;
+}
+
+/**
+ * Group a raw digit string for display ("1200000" to "1,200,000"). The fraction
+ * is left alone, trailing "." included, so the field does not rewrite itself
+ * between the point and the first decimal.
+ */
+export function formatThousands(value: string): string {
+  const [whole, fraction] = value.split('.');
+  const grouped = whole ? Number(whole).toLocaleString('en-SG') : '';
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+}
+
 function toNumber(value: string): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
