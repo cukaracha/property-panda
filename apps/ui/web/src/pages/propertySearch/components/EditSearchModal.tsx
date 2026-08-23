@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/input';
 import SearchFilterFields from './SearchFilterFields';
 import { SAVED_SEARCH_NAME_MAX_LENGTH } from './SaveSearchModal';
 import type { FilterFormState, HiddenEntity } from '../types/listings';
+import { buildSearchRequest } from '../utils/filterOptions';
 
 export interface EditSearchModalProps {
   name: string;
@@ -24,11 +25,25 @@ const GROUPS: { scope: HiddenEntity['scope']; title: string }[] = [
 ];
 
 /**
+ * The filters as the request they would send, which is what makes two forms the same
+ * search. Retyping a field to the value it already had is not a change, and neither is
+ * clearing one that was already empty.
+ */
+function describeRequest(form: FilterFormState): string {
+  return JSON.stringify(buildSearchRequest(form));
+}
+
+function describeHidden(entities: HiddenEntity[]): string {
+  return entities.map(entity => entity.entityKey).join('|');
+}
+
+/**
  * Edits one saved search: its name, its filters, and the items it hides.
  *
  * All three in one modal because they are one thing to the user, and nothing here
  * touches the stored search until the footer is pressed. Cancel throws the draft away,
- * which is what makes unhiding something in here safe to try.
+ * which is what makes unhiding something in here safe to try. The footer stays disabled
+ * until something actually differs from what is stored.
  *
  * The caller mounts this only while it is open, so each opening starts from what is
  * stored rather than from a draft left over from the last time.
@@ -47,9 +62,15 @@ export default function EditSearchModal({
   const [draftHidden, setDraftHidden] = useState(hidden);
 
   const trimmed = draftName.trim();
+  // Saving from the results screen also re-runs the scrape, which opens a browser
+  // window, so a press that would store exactly what is already stored is not offered.
+  const hasChanges =
+    trimmed !== name.trim() ||
+    describeRequest(draftForm) !== describeRequest(form) ||
+    describeHidden(draftHidden) !== describeHidden(hidden);
 
   const save = () => {
-    if (!trimmed || isSaving) return;
+    if (!trimmed || !hasChanges || isSaving) return;
     onSave(trimmed, draftForm, draftHidden);
   };
 
@@ -72,7 +93,7 @@ export default function EditSearchModal({
           <Button variant='outline' onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={!trimmed || isSaving}>
+          <Button onClick={save} disabled={!trimmed || !hasChanges || isSaving}>
             {isSaving ? 'Saving' : confirmLabel}
           </Button>
         </>
