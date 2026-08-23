@@ -16,6 +16,7 @@ import SearchErrorPanel from './components/SearchErrorPanel';
 import { useBookmarkedEntities } from './hooks/useBookmarkedEntities';
 import { useHiddenEntities } from './hooks/useHiddenEntities';
 import { useShortlist } from '../../hooks/useShortlist';
+import { useAlwaysHidden } from '../../hooks/useAlwaysHidden';
 import { useSearchProgress } from './hooks/useSearchProgress';
 import { useStartSearch } from './hooks/useStartSearch';
 import { useResultsPageContext } from './PageContext';
@@ -51,7 +52,9 @@ import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
  *
  * What is hidden and what is bookmarked belong to the search rather than to the app:
  * while the search is unsaved they are held with the results, and once it is saved
- * every toggle writes through to the stored search.
+ * every toggle writes through to the stored search. Always hidden items are the
+ * exception: they belong to the app, so this screen filters on the union of the two
+ * lists and the hide confirmation decides which one an item joins.
  *
  * The filters behind the results are persisted with them, so this screen can save
  * the search it is showing even after a reload has emptied the filter panel.
@@ -133,6 +136,15 @@ export default function PropertySearchResults() {
     remove: removeFromShortlist,
   } = useShortlist();
 
+  const {
+    alwaysHidden,
+    alwaysHiddenPropertyIds,
+    alwaysHiddenUnitIds,
+    error: alwaysHiddenError,
+    hideAlways,
+    unhideAlways,
+  } = useAlwaysHidden();
+
   const errorMessage = pollError || status?.error || '';
   // A failed job keeps its id, so the failure survives a reload instead of bouncing
   // the user back to the filters with nothing said.
@@ -146,8 +158,20 @@ export default function PropertySearchResults() {
   // it. Pinning only what survives the map would erase the pins the user is zooming
   // towards, so the pins show what is available and the list shows what is selected.
   const mappableProperties = useMemo(
-    () => allProperties.filter(property => !hiddenPropertyIds.has(property.propertyId)),
-    [allProperties, hiddenPropertyIds]
+    () =>
+      allProperties.filter(
+        property =>
+          !hiddenPropertyIds.has(property.propertyId) &&
+          !alwaysHiddenPropertyIds.has(property.propertyId)
+      ),
+    [allProperties, hiddenPropertyIds, alwaysHiddenPropertyIds]
+  );
+
+  // One set for the cards and for the assistant, since a row is left out for the same
+  // reason whichever list holds it and the card only ever counts what it was not shown.
+  const combinedHiddenUnitIds = useMemo(
+    () => new Set([...hiddenUnitIds, ...alwaysHiddenUnitIds]),
+    [hiddenUnitIds, alwaysHiddenUnitIds]
   );
 
   // Bookmarks sort rather than filter, and they sort after hiding and after the map, so a
@@ -201,6 +225,11 @@ export default function PropertySearchResults() {
     return hidden.filter(entity => keys.has(entity.entityKey));
   }, [hidden, allProperties]);
 
+  const alwaysHiddenInResults = useMemo(() => {
+    const keys = resultEntityKeys(allProperties);
+    return alwaysHidden.filter(entity => keys.has(entity.entityKey));
+  }, [alwaysHidden, allProperties]);
+
   const bookmarkedInResults = useMemo(() => {
     const keys = resultEntityKeys(allProperties);
     return bookmarked.filter(entity => keys.has(entity.entityKey));
@@ -213,35 +242,37 @@ export default function PropertySearchResults() {
     setResults(status);
   }, [status, setResults]);
 
-  const commitHideProperty = (property: Property) =>
-    hide('property', property.propertyId, property.name);
+  // The two lists take the same entity and differ only in reach, so one pair of commit
+  // helpers builds the label and the toggle picks which list it lands on.
+  const commitHideProperty = (property: Property, alwaysHide: boolean) =>
+    (alwaysHide ? hideAlways : hide)('property', property.propertyId, property.name);
 
-  const commitHideUnit = (property: Property, row: ListingRow) =>
-    hide(
+  const commitHideUnit = (property: Property, row: ListingRow, alwaysHide: boolean) =>
+    (alwaysHide ? hideAlways : hide)(
       'unit',
       String(row.listingId),
       `${property.name}, ${row.unitTypeLabel}, ${formatCurrency(row.price)}`
     );
 
-  const confirmHide = async () => {
+  const confirmHide = async (alwaysHide: boolean) => {
     if (!pendingHide) return;
     if (pendingHide.scope === 'property') {
-      await commitHideProperty(pendingHide.property);
+      await commitHideProperty(pendingHide.property, alwaysHide);
       return;
     }
-    await commitHideUnit(pendingHide.property, pendingHide.row);
+    await commitHideUnit(pendingHide.property, pendingHide.row, alwaysHide);
   };
 
-  const hidePropertyById = (propertyId: string) => {
+  const hidePropertyById = (propertyId: string, alwaysHide = false) => {
     const property = allProperties.find(item => item.propertyId === propertyId);
-    if (property) commitHideProperty(property);
+    if (property) commitHideProperty(property, alwaysHide);
   };
 
-  const hideUnitById = (listingId: string) => {
+  const hideUnitById = (listingId: string, alwaysHide = false) => {
     for (const property of allProperties) {
       const row = toListingRows(property).find(item => String(item.listingId) === listingId);
       if (row) {
-        commitHideUnit(property, row);
+        commitHideUnit(property, row, alwaysHide);
         return;
       }
     }
@@ -370,8 +401,9 @@ export default function PropertySearchResults() {
       mapFilterSummary,
       savedSearchName,
       properties: visibleProperties,
-      hiddenUnitIds,
+      hiddenUnitIds: combinedHiddenUnitIds,
       hidden: hiddenInResults,
+      alwaysHidden: alwaysHiddenInResults,
       bookmarked: bookmarkedInResults,
       bookmarkedPropertyIds,
       shortlistedIds,
@@ -384,6 +416,9 @@ export default function PropertySearchResults() {
       onHideProperty: hidePropertyById,
       onHideUnit: hideUnitById,
       onUnhide: unhide,
+      onAlwaysHideProperty: (propertyId: string) => hidePropertyById(propertyId, true),
+      onAlwaysHideUnit: (listingId: string) => hideUnitById(listingId, true),
+      onUnhideAlways: unhideAlways,
       onBookmarkProperty: bookmarkPropertyById,
       onRemoveBookmark: removeBookmarkById,
       onShortlistUnit: shortlistUnitById,
@@ -436,14 +471,22 @@ export default function PropertySearchResults() {
                 onClick={() => setShowHidden(current => !current)}
               >
                 {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                {showHidden ? 'Hide the hidden items' : `Show hidden (${hiddenInResults.length})`}
+                {showHidden
+                  ? 'Hide the hidden items'
+                  : `Show hidden (${hiddenInResults.length + alwaysHiddenInResults.length})`}
               </Button>
             </div>
           )}
         </div>
 
         {showHidden && phase === 'ready' && (
-          <HiddenPanel hidden={hiddenInResults} error={hiddenError} onUnhide={unhide} />
+          <HiddenPanel
+            hidden={hiddenInResults}
+            alwaysHidden={alwaysHiddenInResults}
+            error={hiddenError || alwaysHiddenError}
+            onUnhide={unhide}
+            onUnhideAlways={unhideAlways}
+          />
         )}
 
         {isRunning ? (
@@ -490,6 +533,7 @@ export default function PropertySearchResults() {
 
             {shortlistError && <p className='text-sm text-rose'>{shortlistError}</p>}
             {bookmarkedError && <p className='text-sm text-rose'>{bookmarkedError}</p>}
+            {alwaysHiddenError && <p className='text-sm text-rose'>{alwaysHiddenError}</p>}
 
             {results?.truncated && (
               <p className='type-ui-sm text-ink-3'>
@@ -520,7 +564,7 @@ export default function PropertySearchResults() {
                   property={property}
                   shortlistedIds={shortlistedIds}
                   onToggleShortlist={toggleShortlist}
-                  hiddenUnitIds={hiddenUnitIds}
+                  hiddenUnitIds={combinedHiddenUnitIds}
                   onHideProperty={property => setPendingHide({ scope: 'property', property })}
                   onHideUnit={(property, row) => setPendingHide({ scope: 'unit', property, row })}
                   isBookmarked={bookmarkedPropertyIds.has(property.propertyId)}
@@ -532,11 +576,15 @@ export default function PropertySearchResults() {
         )}
       </div>
 
-      <HideConfirmModal
-        pending={pendingHide}
-        onClose={() => setPendingHide(null)}
-        onConfirm={confirmHide}
-      />
+      {/* Mounted only while it is open, so the always hide toggle inside it starts off
+          on every hide rather than carrying the last answer over. */}
+      {pendingHide && (
+        <HideConfirmModal
+          pending={pendingHide}
+          onClose={() => setPendingHide(null)}
+          onConfirm={confirmHide}
+        />
+      )}
 
       <UnshortlistConfirmModal
         pending={pendingUnshortlist}

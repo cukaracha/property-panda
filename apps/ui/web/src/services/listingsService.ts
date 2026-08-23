@@ -17,11 +17,15 @@
  *
  * The shortlist is the opposite arrangement on purpose. It belongs to the app rather
  * than to a search, so it is one collection of its own, and it stores each unit whole
- * rather than by id, so it outlives the job that found it.
+ * rather than by id, so it outlives the job that found it. The always hidden list sits
+ * on that side too: one collection of its own, applied to every search rather than to
+ * the one that turned the item up.
  */
 import type {
+  AlwaysHiddenResponse,
   BookmarkedEntity,
   HiddenEntity,
+  HiddenScope,
   ListSavedSearchesResponse,
   MutationResponse,
   SavedSearch,
@@ -208,5 +212,44 @@ export async function removeShortlist(listingId: string): Promise<MutationRespon
   if (!response.ok || !data) {
     throw new Error(data?.message || 'Failed to remove the unit from the shortlist');
   }
+  return data;
+}
+
+/** Every property and unit hidden in every search, newest first. */
+export async function listAlwaysHidden(): Promise<AlwaysHiddenResponse> {
+  const response = await fetch(`${API_URL}/listings/hidden`);
+  const data = await readBody<AlwaysHiddenResponse>(response);
+  if (!response.ok || !data) {
+    throw new Error(data?.message || 'Failed to load the always hidden items');
+  }
+  return data;
+}
+
+/** Always hide one property or unit, sending the label the results screen showed. */
+export async function addAlwaysHidden(entity: HiddenEntity): Promise<HiddenEntity> {
+  const response = await fetch(`${API_URL}/listings/hidden`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entity),
+  });
+  const data = await readBody<HiddenEntity>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to always hide the item');
+  return data;
+}
+
+/**
+ * Stop always hiding one entity. The key goes as two path segments rather than one,
+ * because it carries a `#` the browser would otherwise keep out of the request.
+ */
+export async function removeAlwaysHidden(
+  scope: HiddenScope,
+  id: string
+): Promise<MutationResponse> {
+  const response = await fetch(
+    `${API_URL}/listings/hidden/${encodeURIComponent(scope)}/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  );
+  const data = await readBody<MutationResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to unhide the item');
   return data;
 }

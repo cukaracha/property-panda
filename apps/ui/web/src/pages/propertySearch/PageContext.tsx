@@ -49,8 +49,12 @@ export interface ResultsView {
   /** The name of the saved search these results belong to, or null while unsaved. */
   savedSearchName: string | null;
   properties: Property[];
+  /** Both lists at once: a row is left out for the same reason whichever one holds it. */
   hiddenUnitIds: Set<string>;
   hidden: HiddenEntity[];
+  /** The always hidden items these results contain, kept apart because unhiding one
+   *  brings it back in every search rather than only in this one. */
+  alwaysHidden: HiddenEntity[];
   bookmarked: BookmarkedEntity[];
   bookmarkedPropertyIds: Set<string>;
   shortlistedIds: Set<string>;
@@ -64,6 +68,9 @@ export interface ResultsHandlers {
   onHideProperty: (propertyId: string) => void;
   onHideUnit: (listingId: string) => void;
   onUnhide: (entityKey: string) => void;
+  onAlwaysHideProperty: (propertyId: string) => void;
+  onAlwaysHideUnit: (listingId: string) => void;
+  onUnhideAlways: (entityKey: string) => void;
   onBookmarkProperty: (propertyId: string) => void;
   onRemoveBookmark: (propertyId: string) => void;
   onShortlistUnit: (listingId: string) => void;
@@ -268,7 +275,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeMapFilter(view)}${describeSavedState(view)}`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. There are two hidden lists: this search's own, which only affects it, and the always hidden list, which leaves an item out of every search and is reviewed on the Always hidden screen. Hiding something always rather than here is the user's choice, so only always hide when they ask for it. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeMapFilter(view)}${describeSavedState(view)}`,
   };
 }
 
@@ -382,6 +389,19 @@ function getResultsDetails(view: ResultsView): string {
     }
   }
 
+  if (view.alwaysHidden.length === 0) {
+    lines.push('Always hidden items in these results: none.');
+  } else {
+    lines.push(
+      'Always hidden items in these results, left out of every search rather than only this one:'
+    );
+    for (const entity of view.alwaysHidden) {
+      lines.push(
+        `- ${entity.label} (entityKey ${entity.entityKey}, scope ${entity.scope}, id ${entity.id})`
+      );
+    }
+  }
+
   if (view.bookmarked.length === 0) {
     lines.push('Bookmarked properties in these results: none.');
   } else {
@@ -396,9 +416,9 @@ function getResultsDetails(view: ResultsView): string {
 
 /**
  * Results screen page context. Registers what is on screen plus the actions that
- * belong to it: hiding a property or a unit, undoing either, pinning a property to the
- * top and unpinning it, saving the search that produced the results while it is still
- * unsaved, and going back to the filters.
+ * belong to it: hiding a property or a unit here or in every search, undoing either,
+ * pinning a property to the top and unpinning it, saving the search that produced the
+ * results while it is still unsaved, and going back to the filters.
  * Editing a saved search is not offered: fourteen groups of filters do not fit in an
  * action payload, so that one stays a button on the screen.
  */
@@ -428,6 +448,7 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     view.expired,
     view.showHidden,
     view.hidden.length,
+    view.alwaysHidden.length,
     view.savedSearchName ?? '',
     view.properties.map(property => property.propertyId).join(','),
     [...view.bookmarkedPropertyIds].sort().join(','),
@@ -463,6 +484,33 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
         example: '{"name": "unhide_entity", "entityKey": "unit#500133217"}',
         display: params => `Unhide ${params.entityKey}`,
         callback: params => handlersRef.current.onUnhide(params.entityKey),
+      },
+      {
+        name: 'always_hide_property',
+        description:
+          'Hide a property from every search, not just this one. Reversible from the Always hidden screen or from the hidden items panel here. Only use it when the user asks for a property to be hidden everywhere or for good.',
+        parameters: { propertyId: 'The propertyId of the property to always hide.' },
+        example: '{"name": "always_hide_property", "propertyId": "925"}',
+        display: params => `Always hide property ${params.propertyId}`,
+        callback: params => handlersRef.current.onAlwaysHideProperty(params.propertyId),
+      },
+      {
+        name: 'always_hide_unit',
+        description:
+          'Hide a single listing from every search, not just this one. Reversible the same way. Only use it when the user asks for a unit to be hidden everywhere or for good.',
+        parameters: { listingId: 'The listingId of the unit to always hide.' },
+        example: '{"name": "always_hide_unit", "listingId": "500133217"}',
+        display: params => `Always hide unit ${params.listingId}`,
+        callback: params => handlersRef.current.onAlwaysHideUnit(params.listingId),
+      },
+      {
+        name: 'unhide_always_hidden',
+        description:
+          'Take a property or unit off the always hidden list, using its entityKey (property#<id> or unit#<id>), so it comes back in every search. Only for items listed as always hidden.',
+        parameters: { entityKey: 'The entityKey of the always hidden item to restore.' },
+        example: '{"name": "unhide_always_hidden", "entityKey": "property#925"}',
+        display: params => `Stop always hiding ${params.entityKey}`,
+        callback: params => handlersRef.current.onUnhideAlways(params.entityKey),
       },
       {
         name: 'shortlist_unit',

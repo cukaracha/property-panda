@@ -1,6 +1,6 @@
 """
 Persistence for the local scraper: the job rows, the property cache, the saved searches,
-the shortlist and the result JSON.
+the shortlist, the always hidden list and the result JSON.
 
 Everything lives in JSON files under `.data/` next to this module. The cloud version of
 this scraper used DynamoDB for the rows and S3 for the results; running on one machine
@@ -28,6 +28,7 @@ JOBS_FILE = os.path.join(DATA_DIR, "jobs.json")
 PROPERTIES_FILE = os.path.join(DATA_DIR, "properties.json")
 SAVED_SEARCHES_FILE = os.path.join(DATA_DIR, "saved_searches.json")
 SHORTLIST_FILE = os.path.join(DATA_DIR, "shortlist.json")
+ALWAYS_HIDDEN_FILE = os.path.join(DATA_DIR, "always_hidden.json")
 
 PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 3600)))
 # A project page that would not load is remembered too, but only briefly: the usual
@@ -41,6 +42,9 @@ JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_SECONDS", str(24 * 3600)))
 MAX_SAVED_SEARCHES = 50
 # The shortlist never expires either, for the same reason and with the same answer.
 MAX_SHORTLIST = 200
+# The always hidden list is bounded like a search's own hidden list, since it holds the
+# same kind of entry and answers the same question across every search instead of one.
+MAX_ALWAYS_HIDDEN = 500
 
 _lock = threading.Lock()
 
@@ -394,3 +398,45 @@ def delete_shortlist(listing_id: str):
         entries = _read(SHORTLIST_FILE)
         if entries.pop(str(listing_id), None) is not None:
             _write(SHORTLIST_FILE, entries)
+
+
+# --------------------------------------------------------------- always hidden
+
+
+def list_always_hidden() -> list:
+    """Every always hidden property and unit, newest first.
+
+    Each entry is the same light {entityKey, scope, id, label, createdAt} record a search
+    stores in its own hidden list. Nothing is snapshotted, because hiding only ever needs
+    to name what to leave out and to say enough for the user to recognise it later.
+    """
+    with _lock:
+        entries = _read(ALWAYS_HIDDEN_FILE)
+    return sorted(entries.values(), key=lambda item: item.get("createdAt") or 0, reverse=True)
+
+
+def put_always_hidden(entity: dict) -> dict:
+    """Store one entity under its key, refusing to grow the list past the cap.
+
+    Hiding something already hidden overwrites it, which refreshes its label. The cap
+    raises rather than evicting the oldest, the same way put_shortlist does.
+    """
+    entity_key = entity["entityKey"]
+    with _lock:
+        entries = _read(ALWAYS_HIDDEN_FILE)
+        if entity_key not in entries and len(entries) >= MAX_ALWAYS_HIDDEN:
+            raise ValueError(
+                f"You already always hide {MAX_ALWAYS_HIDDEN} items. "
+                "Unhide one before hiding another."
+            )
+        entries[entity_key] = entity
+        _write(ALWAYS_HIDDEN_FILE, entries)
+    return entity
+
+
+def delete_always_hidden(entity_key: str):
+    """Stop always hiding one entity. A key already gone counts as success."""
+    with _lock:
+        entries = _read(ALWAYS_HIDDEN_FILE)
+        if entries.pop(entity_key, None) is not None:
+            _write(ALWAYS_HIDDEN_FILE, entries)

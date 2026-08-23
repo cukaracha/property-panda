@@ -15,6 +15,9 @@ no rework beyond pointing at this host instead of API Gateway:
     GET    /listings/shortlist        -> the shortlisted units, grouped by property
     POST   /listings/shortlist        -> shortlist one unit, snapshot and all
     DELETE /listings/shortlist/{id}   -> drop one
+    GET    /listings/hidden           -> the properties and units hidden in every search
+    POST   /listings/hidden           -> always hide one
+    DELETE /listings/hidden/{scope}/{id} -> stop always hiding one
 
 It also serves the in-app assistant, which used to be a Bedrock AgentCore runtime the
 browser invoked directly and is now an agent in this process (see `agent/`):
@@ -313,6 +316,47 @@ def delete_shortlist(listing_id: str):
 
     store.delete_shortlist(listing_id)
     return {"listingId": listing_id}
+
+
+# ---------------------------------------------------------------- always hidden
+
+
+@app.get("/listings/hidden")
+def get_always_hidden():
+    """Every property and unit the user hides in every search, newest first."""
+    return {"hidden": store.list_always_hidden()}
+
+
+@app.post("/listings/hidden", status_code=201)
+async def create_always_hidden(request: Request):
+    """Always hide one property or unit, storing the label the results screen showed."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        return store.put_always_hidden(validation.clean_always_hidden(body))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/listings/hidden/{scope}/{entity_id}")
+def delete_always_hidden(scope: str, entity_id: str):
+    """Stop always hiding one entity. A key already gone counts as success.
+
+    The key arrives split in two because it carries a `#`, which a browser would keep
+    out of the request as a URL fragment unless it were percent encoded on every call.
+    """
+    try:
+        scope = validation.clean_entity_scope(scope)
+        entity_id = validation.clean_entity_id(entity_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    entity_key = f"{scope}#{entity_id}"
+    store.delete_always_hidden(entity_key)
+    return {"entityKey": entity_key}
 
 
 # ------------------------------------------------------------------------- chat

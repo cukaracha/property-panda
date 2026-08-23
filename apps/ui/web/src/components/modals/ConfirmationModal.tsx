@@ -18,6 +18,12 @@ export interface ConfirmationModalProps {
   successMessage?: string;
   errorMessage?: string;
   onSuccess?: () => void;
+  /**
+   * A second checkbox under the acknowledgement, for a confirmation that also asks how
+   * to carry the action out. Owned by the caller, since the answer is what it confirms
+   * with, and left out entirely when nothing is being asked.
+   */
+  extraOption?: { label: string; checked: boolean; onChange: (checked: boolean) => void };
 }
 
 const AUTO_CLOSE_DELAY = 3000;
@@ -56,6 +62,7 @@ export default function ConfirmationModal({
   successMessage = 'Operation completed successfully.',
   errorMessage = 'An error occurred. Please try again.',
   onSuccess,
+  extraOption,
 }: ConfirmationModalProps) {
   const [state, setState] = useState<ConfirmationState>('confirm');
   const [checked, setChecked] = useState(false);
@@ -116,6 +123,17 @@ export default function ConfirmationModal({
               />
               <span className='text-sm text-ink-2'>{checkboxLabel}</span>
             </label>
+            {extraOption && (
+              <label className='mt-3 flex cursor-pointer items-start gap-3 border-t border-line pt-3'>
+                <input
+                  type='checkbox'
+                  className='check mt-0.5'
+                  checked={extraOption.checked}
+                  onChange={e => extraOption.onChange(e.target.checked)}
+                />
+                <span className='text-sm text-ink-2'>{extraOption.label}</span>
+              </label>
+            )}
           </>
         );
 

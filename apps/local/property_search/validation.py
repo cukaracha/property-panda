@@ -192,23 +192,36 @@ def build_request(body: dict) -> tuple:
     return source, pages, build_filters(body.get("filters") or {})
 
 
+def clean_entity_id(value) -> str:
+    """Check the source's own id for one property or unit.
+
+    Shared by everything that names an entity, so a hidden item, a bookmark and an
+    always hidden item are all held to one rule rather than three copies of it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str, type(None))):
+        raise ValueError("id must be a string or a number")
+    entity_id = str(value or "").strip()
+    if not entity_id:
+        raise ValueError("id is required")
+    if len(entity_id) > 100:
+        raise ValueError("id is too long")
+    return entity_id
+
+
+def clean_entity_scope(scope) -> str:
+    """Check a scope, which is the half of an entity key that says what the id names."""
+    if scope not in ("property", "unit"):
+        raise ValueError("scope must be property or unit")
+    return scope
+
+
 def clean_hidden(item: dict) -> tuple:
     """Validate one hidden property or unit, returning (scope, id, label)."""
     if not isinstance(item, dict):
         raise ValueError("each hidden item must be an object")
 
-    scope = item.get("scope")
-    if scope not in ("property", "unit"):
-        raise ValueError("scope must be property or unit")
-
-    entity_id = item.get("id")
-    if isinstance(entity_id, bool) or not isinstance(entity_id, (int, str, type(None))):
-        raise ValueError("id must be a string or a number")
-    entity_id = str(entity_id or "").strip()
-    if not entity_id:
-        raise ValueError("id is required")
-    if len(entity_id) > 100:
-        raise ValueError("id is too long")
+    scope = clean_entity_scope(item.get("scope"))
+    entity_id = clean_entity_id(item.get("id"))
 
     label = item.get("label")
     if label is not None and not isinstance(label, str):
@@ -229,14 +242,7 @@ def clean_bookmark(item: dict) -> tuple:
     if item.get("scope") not in (None, "property"):
         raise ValueError("bookmarks are properties only")
 
-    entity_id = item.get("id")
-    if isinstance(entity_id, bool) or not isinstance(entity_id, (int, str, type(None))):
-        raise ValueError("id must be a string or a number")
-    entity_id = str(entity_id or "").strip()
-    if not entity_id:
-        raise ValueError("id is required")
-    if len(entity_id) > 100:
-        raise ValueError("id is too long")
+    entity_id = clean_entity_id(item.get("id"))
 
     label = item.get("label")
     if label is not None and not isinstance(label, str):
@@ -359,6 +365,26 @@ def clean_bookmarked_update(body: dict) -> list:
     if not isinstance(body, dict):
         raise ValueError("Request body must be a JSON object")
     return clean_bookmarked_list(body.get("bookmarked"))
+
+
+def clean_always_hidden(body: dict) -> dict:
+    """Validate one always hidden property or unit, returning the record to store.
+
+    The same rules a search's own hidden list goes through, one item at a time, because
+    this list is written a hide at a time rather than replaced wholesale.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    scope, entity_id, label = clean_hidden(body)
+    created_at = clean_int(body.get("createdAt"), "createdAt")
+    return {
+        "entityKey": f"{scope}#{entity_id}",
+        "scope": scope,
+        "id": entity_id,
+        "label": label,
+        "createdAt": created_at if created_at is not None else int(time.time()),
+    }
 
 
 def clean_search_id(search_id: str) -> str:

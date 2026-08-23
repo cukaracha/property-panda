@@ -138,6 +138,12 @@ export interface TriggerSearchResponse {
 
 export type HiddenScope = 'property' | 'unit';
 
+/**
+ * One property or unit left out of the results. The same record serves both lists that
+ * hide something: the one a saved search carries, and the app wide one behind the
+ * always hide toggle. Nothing is snapshotted, because hiding only needs to name what to
+ * leave out and to say enough for the user to recognise it later.
+ */
 export interface HiddenEntity {
   entityKey: string;
   scope: HiddenScope;
@@ -157,6 +163,11 @@ export interface BookmarkedEntity {
   id: string;
   label: string;
   createdAt: number;
+}
+
+/** Every property and unit hidden in every search, newest first. */
+export interface AlwaysHiddenResponse {
+  hidden: HiddenEntity[];
 }
 
 export type PendingHide =

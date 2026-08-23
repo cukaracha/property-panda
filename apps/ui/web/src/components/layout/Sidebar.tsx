@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Building2, Heart, User, PanelLeft } from 'lucide-react';
+import { Building2, EyeOff, Heart, User, PanelLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../BrandLogo';
 import { ThemeToggle } from '../ThemeToggle';
@@ -58,6 +58,12 @@ export default function Sidebar({ onToggleCollapse, onNavigate }: SidebarProps) 
             <Heart size={18} />
           </span>
           <span className='ni-label'>Shortlist</span>
+        </NavLink>
+        <NavLink to='/hidden' className={navItemClass} title='Always hidden' onClick={onNavigate}>
+          <span className='ni-icon'>
+            <EyeOff size={18} />
+          </span>
+          <span className='ni-label'>Always hidden</span>
         </NavLink>
       </nav>
 
