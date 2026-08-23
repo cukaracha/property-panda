@@ -29,6 +29,10 @@ PROPERTIES_FILE = os.path.join(DATA_DIR, "properties.json")
 HIDDEN_FILE = os.path.join(DATA_DIR, "hidden.json")
 
 PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 3600)))
+# A project page that would not load is remembered too, but only briefly: the usual
+# causes (a slug that moved, a page pulled down) are the kind of thing that gets fixed
+# upstream, so the tombstone has to expire on its own.
+PROPERTY_FAIL_TTL_SECONDS = int(os.environ.get("PROPERTY_FAIL_TTL_SECONDS", str(24 * 3600)))
 # Jobs are kept only so a reload of the page can still poll the run that is in flight.
 JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_SECONDS", str(24 * 3600)))
 
@@ -150,25 +154,47 @@ def get_result(job_id: str) -> dict:
 # ------------------------------------------------------------- property cache
 
 
-def get_cached_properties(property_ids: list) -> dict:
-    """Return the cached project records for these ids, skipping missing and stale ones."""
+def get_property_cache(property_ids: list) -> tuple:
+    """Return (fresh records by id, ids whose last fetch failed recently).
+
+    Both halves come out of one read. The failures are returned so the caller can skip
+    them: without that, a project page that 404s is re-fetched on every future search
+    forever, spending the whole retry budget each time on an answer that has not changed.
+    """
     now = int(time.time())
     with _lock:
         cache = _read(PROPERTIES_FILE)
 
-    cached = {}
+    records = {}
+    failed = set()
     for property_id in property_ids:
         entry = cache.get(str(property_id)) if property_id else None
-        if entry and now - int(entry.get("updatedAt") or 0) < PROPERTY_TTL_SECONDS:
-            cached[property_id] = entry.get("record") or {}
-    return cached
+        if not entry:
+            continue
+        if entry.get("record") is not None:
+            if now - int(entry.get("updatedAt") or 0) < PROPERTY_TTL_SECONDS:
+                records[property_id] = entry.get("record") or {}
+        elif now - int(entry.get("failedAt") or 0) < PROPERTY_FAIL_TTL_SECONDS:
+            failed.add(property_id)
+    return records, failed
 
 
-def put_cached_property(property_id: str, record: dict):
-    """Store one scraped project record against the current time."""
+def put_property_cache(records: dict, failed=()):
+    """Store a whole enrichment pass in one write.
+
+    One write per pass rather than one per property: the previous version re-read and
+    rewrote the entire cache file once for every project, which is quadratic in the
+    number of properties a search turns up.
+    """
+    if not records and not failed:
+        return
+    now = int(time.time())
     with _lock:
         cache = _read(PROPERTIES_FILE)
-        cache[str(property_id)] = {"record": record, "updatedAt": int(time.time())}
+        for property_id, record in records.items():
+            cache[str(property_id)] = {"record": record, "updatedAt": now}
+        for property_id in failed:
+            cache[str(property_id)] = {"failedAt": now}
         _write(PROPERTIES_FILE, cache)
 
 

@@ -52,10 +52,16 @@ state you cannot clear.
 
 `POST /listings/search` validates the filters, records a queued job and returns
 a jobId immediately; the page then polls `GET /listings/results?jobId=`, which
-is both the poll and the fetch. Behind it, one background thread walks the
+is both the poll and the fetch. Behind it, one background thread reads the
 search result pages in a single browser session, fetches each new project page
 for the property-level facts (TOP year, total units, tenure, developer, PSF
 range), groups everything, and writes the result.
+
+That session loads pages across four tabs rather than one. Almost all of a
+scrape is spent waiting, and enrichment is one page load per property, so the
+tabs wait in parallel instead of queueing behind each other. They are there to
+overlap the waiting, not to hit the site harder: every navigation passes through
+one shared rate limit, so the tabs take turns rather than bursting.
 
 Scrapes run one at a time: Chrome holds an exclusive lock on its profile
 directory, and that profile is what carries the Cloudflare clearance between
@@ -63,7 +69,24 @@ runs.
 
 Project pages are cached in `.data/properties.json` for 30 days, because they
 change on the order of months while listings change hourly — without it, every
-search would re-solve a challenge per property for data that has not moved.
+search would re-solve a challenge per property for data that has not moved. A
+project page that would not load is written down too, for a day, so one dead
+project is not re-attempted by every later search.
+
+## Tuning
+
+Each of these is read from the environment at start-up, so
+`SCRAPE_TABS=2 ./run.sh` is enough to change one.
+
+| Variable                    | Default | What it does                                          |
+| --------------------------- | ------- | ----------------------------------------------------- |
+| `SCRAPE_TABS`               | `4`     | Tabs the session spreads page loads across            |
+| `SCRAPE_DELAY_SECONDS`      | `5`     | Politeness gap per tab, shared out across all of them |
+| `AUTO_SOLVE_SECONDS`        | `30`    | How long a challenge gets before it asks you for help |
+| `MANUAL_SOLVE_SECONDS`      | `300`   | How long it then waits for you                        |
+| `MARKER_GRACE_SECONDS`      | `5`     | Grace before a rendered page counts as the wrong page |
+| `PROPERTY_TTL_SECONDS`      | 30 days | How long a project record stays cached                |
+| `PROPERTY_FAIL_TTL_SECONDS` | 1 day   | How long a project page that failed is left alone     |
 
 ## Hiding
 
