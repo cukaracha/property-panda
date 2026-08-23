@@ -60,8 +60,11 @@ prefix() {
     awk -v tag="$1" '{ printf "%s %s\n", tag, $0; fflush() }'
 }
 
+# LISTEN only. A bare `lsof -ti tcp:PORT` also matches *client* sockets on that port, so
+# a browser tab left over from the last run reads as "port still in use" long after the
+# server it was talking to exited.
 port_pid() {
-    lsof -ti "tcp:$1" 2>/dev/null | head -1
+    lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null | head -1
 }
 
 # ============================================================================
