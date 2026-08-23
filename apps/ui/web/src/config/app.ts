@@ -17,3 +17,11 @@ export const APP_THEME_KEY = 'app-theme';
 export const SSO_ENABLED = !!import.meta.env.VITE_COGNITO_DOMAIN;
 export const SSO_PROVIDER = 'FederatedIdP';
 export const SSO_BUTTON_LABEL = 'Single sign-on';
+
+// Local mode. The property search page (apps/local/property_search) runs entirely on
+// this machine against a loopback server with no Cognito in front of it, so the app has
+// to be able to boot without a user pool — configureAmplify() throws outright when the
+// pool id is absent. Gated on import.meta.env.DEV as well as the flag: Vite folds that
+// constant to false when building for production and drops the branch, so no deployed
+// bundle can ever take the unauthenticated path, whatever its .env says.
+export const LOCAL_MODE = import.meta.env.DEV && import.meta.env.VITE_LOCAL_MODE === 'true';

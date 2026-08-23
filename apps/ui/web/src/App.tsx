@@ -9,6 +9,7 @@ import Profile from './pages/profile/Profile';
 import UserManagement from './pages/userManagement/UserManagement';
 import Converter from './pages/converter/Converter';
 import Ontology from './pages/ontology/Ontology';
+import PropertySearch from './pages/propertySearch/PropertySearch';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path='profile' element={<Profile />} />
         <Route path='converter' element={<Converter />} />
         <Route path='ontology' element={<Ontology />} />
+        <Route path='properties' element={<PropertySearch />} />
         {/* Admin route is reachable, but the admin API handlers enforce the
             Admins group (403 for non-admins); the nav link is admin-only. */}
         <Route path='admin' element={<UserManagement />} />

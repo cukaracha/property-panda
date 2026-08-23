@@ -1,0 +1,182 @@
+"""
+The scrape job itself: search pages in, grouped properties out.
+
+For each job it walks the source's search result pages in one browser session, enriches
+each distinct property from its project page (cached), groups everything into the shape
+the UI renders, and records the result and the terminal status on the job row.
+
+Status moves queued -> scraping -> enriching -> succeeded, or -> failed.
+
+Enrichment is best effort by design: a project page that will not load leaves that
+property flagged `enrichment: "unavailable"` rather than failing a job whose listings are
+all fine.
+"""
+
+import traceback
+
+import browser
+import grouping
+import store
+from sources.property_guru import PropertyGuruSource
+
+MAX_PAGES_CEILING = 10
+
+# A failure's debuggable detail rides on the job row so it reaches the UI.
+DETAIL_MAX_CHARS = 4000
+
+_SOURCES = {PropertyGuruSource.name: PropertyGuruSource}
+
+
+def get_source(name: str):
+    """Resolve a source adapter by name. Adding a portal means one entry in _SOURCES."""
+    source_class = _SOURCES.get(name or PropertyGuruSource.name)
+    if source_class is None:
+        raise ValueError(f"Unknown source: {name}")
+    return source_class()
+
+
+def scrape_search_pages(session, source, filters, max_pages):
+    """Walk the search result pages in one browser session, deduplicating as we go."""
+    listings = []
+    seen = set()
+    total_pages = None
+    pages_scanned = 0
+    truncated = False
+
+    for page in range(1, max_pages + 1):
+        if page > 1:
+            session.be_polite()
+
+        url = source.build_search_url(filters, page)
+        html = session.fetch_html(url, must_contain="__NEXT_DATA__")
+
+        if total_pages is None:
+            total_pages = source.total_pages(html)
+
+        page_listings = source.parse_listings(html)
+        pages_scanned = page
+        print(f"Page {page}: {len(page_listings)} listings")
+
+        if not page_listings:
+            # The page rendered (fetch_html asserts the data marker) but yielded nothing.
+            # On page 1 with pages available upstream, that means the payload shape moved
+            # under us, not that the search is empty. Failing here is deliberate: the
+            # alternative reports "no properties matched" for a broken parser, which looks
+            # identical to a genuinely empty search.
+            if page == 1 and total_pages:
+                raise RuntimeError(
+                    "parsed 0 listings from a rendered page 1 while the site reports "
+                    f"{total_pages} page(s) of results, the payload shape has likely changed"
+                )
+            break
+
+        # Deduplicate across ALL pages, not per page. A listing can repeat across page
+        # boundaries when the underlying result set shifts between requests.
+        for listing in page_listings:
+            listing_id = listing.get("listingId")
+            if listing_id and listing_id not in seen:
+                seen.add(listing_id)
+                listings.append(listing)
+
+        if total_pages and page >= total_pages:
+            break
+    else:
+        # The loop ran to max_pages without exhausting the result set, so the user is
+        # seeing a capped view. Never report a capped scrape as a complete one.
+        if total_pages and max_pages < total_pages:
+            truncated = True
+
+    return listings, pages_scanned, total_pages or 0, truncated
+
+
+def enrich_properties(session, source, listings):
+    """Fetch each uncached project page once, returning propertyId -> project record."""
+    by_id = {}
+    for listing in listings:
+        property_id = listing.get("propertyId")
+        if property_id and property_id not in by_id:
+            by_id[property_id] = listing
+
+    cached = store.get_cached_properties(list(by_id))
+    print(f"Property cache: {len(cached)} hit, {len(by_id) - len(cached)} to fetch")
+
+    for property_id, listing in by_id.items():
+        if property_id in cached:
+            continue
+
+        url = source.project_url(listing)
+        if not url:
+            continue
+
+        session.be_polite()
+        try:
+            html = session.fetch_html(url, must_contain="property-attr")
+            record = source.parse_project(html)
+            record["projectUrl"] = url
+            cached[property_id] = record
+            store.put_cached_property(property_id, record)
+        except Exception as e:
+            # Best effort: this property renders with enrichment "unavailable".
+            print(f"Enrichment failed for {property_id} ({url}): {e}")
+
+    return cached
+
+
+def run_job(job: dict) -> dict:
+    """Scrape, enrich and group one job, returning the result payload."""
+    source = get_source(job.get("source"))
+    filters = job.get("filters") or {}
+    max_pages = max(1, min(int(job.get("maxPages") or 1), MAX_PAGES_CEILING))
+    job_id = job["jobId"]
+
+    def notice(message):
+        """Surface what the browser is blocked on, so the UI can say so mid-scrape."""
+        store.update_status(job_id, note=message or None)
+
+    with browser.BrowserSession(on_notice=notice) as session:
+        store.update_status(job_id, "scraping")
+        listings, pages_scanned, total_pages, truncated = scrape_search_pages(
+            session, source, filters, max_pages
+        )
+        print(f"Scraped {len(listings)} distinct listings over {pages_scanned} page(s)")
+
+        store.update_status(job_id, "enriching", listingCount=len(listings))
+        properties_cache = enrich_properties(session, source, listings)
+
+    properties = grouping.group_listings(listings, properties_cache)
+    return {
+        "source": source.name,
+        "properties": properties,
+        "propertyCount": len(properties),
+        "unitCount": grouping.count_units(properties),
+        "pagesScanned": pages_scanned,
+        "totalPages": total_pages,
+        "truncated": truncated,
+    }
+
+
+def process_job(job: dict):
+    """Run one job end to end, recording its terminal status on the job row."""
+    job_id = job["jobId"]
+    try:
+        result = run_job(job)
+        store.put_result(job_id, result)
+        store.update_status(
+            job_id,
+            "succeeded",
+            note=None,
+            propertyCount=result["propertyCount"],
+            unitCount=result["unitCount"],
+            pagesScanned=result["pagesScanned"],
+            totalPages=result["totalPages"],
+            truncated=result["truncated"],
+        )
+    except Exception as e:
+        print(f"Job {job_id} failed: {e}")
+        store.update_status(
+            job_id,
+            "failed",
+            note=None,
+            error=str(e),
+            errorDetail=traceback.format_exc()[-DETAIL_MAX_CHARS:],
+        )

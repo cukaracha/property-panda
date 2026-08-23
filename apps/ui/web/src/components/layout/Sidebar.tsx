@@ -5,6 +5,7 @@ import {
   Library,
   FileText,
   Network,
+  Building2,
   User,
   Users,
   LogOut,
@@ -113,6 +114,17 @@ export default function Sidebar({ onToggleCollapse, onNavigate }: SidebarProps) 
             <Network size={18} />
           </span>
           <span className='ni-label'>Ontology</span>
+        </NavLink>
+        <NavLink
+          to='/properties'
+          className={navItemClass}
+          title='Property search'
+          onClick={onNavigate}
+        >
+          <span className='ni-icon'>
+            <Building2 size={18} />
+          </span>
+          <span className='ni-label'>Property search</span>
         </NavLink>
       </nav>
 

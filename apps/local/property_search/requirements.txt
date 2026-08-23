@@ -1,0 +1,7 @@
+# Local-only dependencies: this app never ships to Lambda, so nothing here is pinned
+# against a runtime's preinstalled versions.
+fastapi==0.115.6
+uvicorn==0.34.0
+# Selenium drives a real, visible Chrome. 4.x bundles Selenium Manager, which resolves a
+# matching chromedriver on its own, so there is nothing to install by hand.
+selenium==4.27.1

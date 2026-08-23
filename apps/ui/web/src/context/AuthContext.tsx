@@ -10,7 +10,7 @@ import {
 } from 'aws-amplify/auth';
 import { Hub } from 'aws-amplify/utils';
 import { configureAmplify } from '../config/amplify';
-import { SSO_PROVIDER } from '../config/app';
+import { LOCAL_MODE, SSO_PROVIDER } from '../config/app';
 import { clearAuthHeadersCache } from '../services/authUtils';
 import { Spinner } from '../components/ui/spinner';
 import { BrandLogo } from '../components/BrandLogo';
@@ -31,6 +31,11 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// The stand-in identity used in local mode, where there is no user pool to ask. It is
+// deliberately not an admin: the admin screens drive APIs that only exist in the cloud.
+const LOCAL_USER = { username: 'local', userId: 'local' } as AuthUser;
+const LOCAL_ATTRIBUTES = { email: 'local@localhost', given_name: 'Local', family_name: 'User' };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -98,6 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (LOCAL_MODE) {
+      setUser(LOCAL_USER);
+      setUserAttributes(LOCAL_ATTRIBUTES);
+      setUserGroups(['Users']);
+      setIsAuthenticated(true);
+      setIsLoading(false);
+      return;
+    }
+
     configureAmplify();
     checkAuth();
 
@@ -134,7 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const handleSignOut = async () => {
-    await amplifySignOut();
+    // Nothing to sign out of in local mode, and Amplify was never configured.
+    if (!LOCAL_MODE) {
+      await amplifySignOut();
+    }
     clearAuthHeadersCache();
     setUser(null);
     setUserAttributes(null);
@@ -144,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const getIdToken = async (): Promise<string | null> => {
+    if (LOCAL_MODE) return null;
     const session = await fetchAuthSession();
     return session.tokens?.idToken?.toString() ?? null;
   };

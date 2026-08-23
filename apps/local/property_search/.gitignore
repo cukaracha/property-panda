@@ -1,0 +1,6 @@
+# Local runtime state: the job rows, cached project pages, hidden list and results.
+.data/
+# The Chrome profile that carries the Cloudflare clearance between runs.
+.chrome-profile/
+.venv/
+__pycache__/
