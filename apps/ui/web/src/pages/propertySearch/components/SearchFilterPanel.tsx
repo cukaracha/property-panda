@@ -20,10 +20,8 @@ import {
   LISTING_FEATURE_OPTIONS,
   MAX_PAGES_LABEL,
   MAX_PAGES_OPTIONS,
-  ORDER_OPTIONS,
   PROJECT_FEATURE_OPTIONS,
   PROPERTY_TYPE_OPTIONS,
-  SORT_OPTIONS,
   stripThousands,
   TENURE_OPTIONS,
   UNIT_FEATURE_OPTIONS,
@@ -135,6 +133,9 @@ export default function SearchFilterPanel({
             value={rangeValue(field, field.min)}
             onChange={event => setField(field.min, stripThousands(event.target.value))}
           />
+          <span className='text-sm text-ink-3' aria-hidden>
+            -
+          </span>
           <Input
             type='text'
             inputMode='numeric'
@@ -268,6 +269,20 @@ export default function SearchFilterPanel({
                 ))}
               </DropdownMenu>
             </div>
+            <div>
+              <p className='type-ui-eyebrow mb-1.5'>{MAX_PAGES_LABEL}</p>
+              <DropdownMenu
+                aria-label={MAX_PAGES_LABEL}
+                value={form.maxPages}
+                onChange={event => setField('maxPages', event.target.value)}
+              >
+                {MAX_PAGES_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </DropdownMenu>
+            </div>
             <div className='sm:col-span-2'>
               <p className='type-ui-eyebrow mb-1.5'>Keyword</p>
               <Input
@@ -282,51 +297,6 @@ export default function SearchFilterPanel({
           </div>
         </div>
       )}
-
-      <div className='mt-4 grid gap-4 sm:grid-cols-3'>
-        <div>
-          <p className='type-ui-eyebrow mb-1.5'>Sort by</p>
-          <DropdownMenu
-            aria-label='Sort by'
-            value={form.sort}
-            onChange={event => setField('sort', event.target.value)}
-          >
-            {SORT_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </DropdownMenu>
-        </div>
-        <div>
-          <p className='type-ui-eyebrow mb-1.5'>Order</p>
-          <DropdownMenu
-            aria-label='Order'
-            value={form.order}
-            onChange={event => setField('order', event.target.value)}
-          >
-            {ORDER_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </DropdownMenu>
-        </div>
-        <div>
-          <p className='type-ui-eyebrow mb-1.5'>{MAX_PAGES_LABEL}</p>
-          <DropdownMenu
-            aria-label={MAX_PAGES_LABEL}
-            value={form.maxPages}
-            onChange={event => setField('maxPages', event.target.value)}
-          >
-            {MAX_PAGES_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </DropdownMenu>
-        </div>
-      </div>
 
       <div className='mt-5 flex justify-end'>
         <Button onClick={onSearch} loading={isBusy} disabled={isBusy}>

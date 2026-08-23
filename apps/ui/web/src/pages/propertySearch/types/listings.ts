@@ -69,6 +69,17 @@ export interface UnitType {
   units: Unit[];
 }
 
+/**
+ * One row of a property's consolidated listings table. A unit carries no bedroom
+ * count of its own, because the scraper hangs that off the unit type it grouped
+ * the unit into, so flattening a property back into one table joins each unit to
+ * its type on the way out.
+ */
+export interface ListingRow extends Unit {
+  bedrooms: number | null;
+  unitTypeLabel: string;
+}
+
 export interface Property {
   propertyId: string;
   name: string;
@@ -115,6 +126,12 @@ export interface SearchResultsResponse {
   truncated?: boolean;
   pagesScanned?: number;
   totalPages?: number;
+  /**
+   * True when the job row outlived the result file behind it, which is what a
+   * succeeded job with nothing to show looks like after a prune. An end state, not
+   * a fault, so the page says the results are gone rather than that nothing matched.
+   */
+  expired?: boolean;
 }
 
 export interface TriggerSearchResponse {
@@ -133,7 +150,7 @@ export interface HiddenEntity {
 
 export type PendingHide =
   | { scope: 'property'; property: Property }
-  | { scope: 'unit'; property: Property; unitType: UnitType; unit: Unit };
+  | { scope: 'unit'; property: Property; row: ListingRow };
 
 export interface ListHiddenResponse {
   hidden: HiddenEntity[];
@@ -206,7 +223,6 @@ export interface FilterFormState {
   distanceToMrt: string;
   keyword: string;
   lastPosted: string;
-  sort: string;
-  order: string;
+  /** "0" means every page the search has. See MAX_PAGES_OPTIONS. */
   maxPages: string;
 }

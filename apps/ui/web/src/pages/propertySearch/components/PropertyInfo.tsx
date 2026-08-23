@@ -1,29 +1,20 @@
 import type { PropertyInfo } from '../types/listings';
 import { formatNumber, formatText, formatYear } from '../utils/format';
 
-export interface PropertyInfoTabProps {
+export interface PropertyInfoProps {
   info: PropertyInfo;
 }
 
 /**
- * The property info tab: the project level facts scraped alongside the
- * listings. Enrichment can fail, in which case every field is null and the tab
- * says so instead of rendering blanks.
+ * The project level facts scraped alongside a property's listings, shown above
+ * its table rather than behind a tab. Enrichment can fail, in which case every
+ * field is null and the block says so instead of rendering three blanks.
  */
-export default function PropertyInfoTab({ info }: PropertyInfoTabProps) {
+export default function PropertyInfo({ info }: PropertyInfoProps) {
   const rows = [
     { label: 'TOP year', value: formatYear(info.topYear) },
-    { label: 'Total units', value: formatNumber(info.totalUnits) },
     { label: 'Tenure', value: formatText(info.tenure) },
-    { label: 'Developer', value: formatText(info.developer) },
-    {
-      label: 'District',
-      value: info.district
-        ? `${info.district}${info.districtName ? `, ${info.districtName}` : ''}`
-        : formatText(info.district),
-    },
-    { label: 'Floors', value: formatNumber(info.floors) },
-    { label: 'Price range', value: formatText(info.psfRange) },
+    { label: 'Total units', value: formatNumber(info.totalUnits) },
   ];
 
   return (
@@ -34,7 +25,7 @@ export default function PropertyInfoTab({ info }: PropertyInfoTabProps) {
           available.
         </p>
       )}
-      <dl className='grid gap-x-6 gap-y-3 sm:grid-cols-2'>
+      <dl className='grid gap-x-6 gap-y-3 sm:grid-cols-3'>
         {rows.map(row => (
           <div key={row.label}>
             <dt className='type-ui-eyebrow'>{row.label}</dt>

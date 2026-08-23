@@ -8,6 +8,8 @@ who is on the other end of the socket.
 """
 
 KNOWN_SOURCES = ("propertyguru",)
+# The ceiling bounds an explicit page count only. A maxPages of 0 is the "every page"
+# sentinel and deliberately passes through unclamped.
 MAX_PAGES_CEILING = 10
 
 # Only these filter keys reach the source adapter. Anything else a caller sends is
@@ -177,8 +179,13 @@ def build_request(body: dict) -> tuple:
     if source not in KNOWN_SOURCES:
         raise ValueError(f"source must be one of {', '.join(KNOWN_SOURCES)}")
 
-    pages = clean_int(body.get("maxPages"), "maxPages") or 1
-    pages = max(1, min(pages, MAX_PAGES_CEILING))
+    # An absent maxPages is one page, not every page: a caller that says nothing about
+    # the size of a scrape should not get the longest one there is.
+    pages = clean_int(body.get("maxPages"), "maxPages")
+    if pages is None:
+        pages = 1
+    elif pages:
+        pages = min(pages, MAX_PAGES_CEILING)
 
     return source, pages, build_filters(body.get("filters") or {})
 

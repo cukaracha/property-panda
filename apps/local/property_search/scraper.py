@@ -28,6 +28,7 @@ import grouping
 import store
 from sources.property_guru import PropertyGuruSource
 
+# Bounds an explicit page count. A maxPages of 0 asks for every page and is not capped.
 MAX_PAGES_CEILING = 10
 
 # A failure's debuggable detail rides on the job row so it reaches the UI.
@@ -57,6 +58,9 @@ def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
     Page 1 goes on its own because its payload is what says how many pages the search
     actually has; the rest are handed over as one batch and load across the tabs. That
     is also why `on_progress` cannot report a total until page 1 has landed.
+
+    A `max_pages` of 0 means every page the search has, which is only knowable from
+    page 1, so an unlimited run is bounded by what page 1 reports rather than upfront.
     """
     report = on_progress or (lambda done, total: None)
     first_url = source.build_search_url(filters, 1)
@@ -81,7 +85,13 @@ def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
     _collect(first, listings, seen)
     pages_scanned = 1
 
-    last_page = min(max_pages, total_pages) if total_pages else max_pages
+    if not max_pages:
+        # Unlimited, so the site's own total is the bound. A total the parser could not
+        # read leaves nothing to scan towards, and stopping at the page already fetched
+        # is the safe way to be wrong.
+        last_page = total_pages or 1
+    else:
+        last_page = min(max_pages, total_pages) if total_pages else max_pages
     report(1, last_page)
     rest = [(page, source.build_search_url(filters, page)) for page in range(2, last_page + 1)]
     if rest:
@@ -241,7 +251,8 @@ def run_job(job: dict) -> dict:
     """Scrape, enrich and group one job, returning the result payload."""
     source = get_source(job.get("source"))
     filters = job.get("filters") or {}
-    max_pages = max(1, min(int(job.get("maxPages") or 1), MAX_PAGES_CEILING))
+    requested_pages = int(job.get("maxPages") or 0)
+    max_pages = min(requested_pages, MAX_PAGES_CEILING) if requested_pages else 0
     job_id = job["jobId"]
 
     def notice(message):

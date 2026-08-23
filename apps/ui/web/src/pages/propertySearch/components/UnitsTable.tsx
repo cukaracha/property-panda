@@ -1,67 +1,56 @@
-import { EyeOff, ExternalLink } from 'lucide-react';
+import { EyeOff } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import DataTable, { type Column } from '../../../components/tables/DataTable';
-import type { Unit } from '../types/listings';
+import type { ListingRow } from '../types/listings';
 import { formatCurrency, formatNumber, formatPsf, formatSqft, formatText } from '../utils/format';
 
 export interface UnitsTableProps {
-  units: Unit[];
-  onHideUnit: (unit: Unit) => void;
+  rows: ListingRow[];
+  onHideUnit: (row: ListingRow) => void;
 }
 
 /**
- * Dense listings table for one unit type. Square corners rather than a card
- * radius, since this is data UI. The row itself opens the listing in a new tab,
- * so the trailing icon is only a hint. Hiding a row is reversible: it drops out
- * of the render, but the result set keeps it.
+ * Dense listings table for one property: every unit it has, across every bedroom
+ * count, in one place. Square corners rather than a card radius, since this is
+ * data UI. The row itself opens the listing in a new tab, so the actions cell
+ * carries only the hide button. Hiding a row is reversible: it drops out of the
+ * render, but the result set keeps it.
  */
-export default function UnitsTable({ units, onHideUnit }: UnitsTableProps) {
-  const openListing = (unit: Unit) => {
-    if (!unit.url) return;
-    window.open(unit.url, '_blank', 'noopener,noreferrer');
+export default function UnitsTable({ rows, onHideUnit }: UnitsTableProps) {
+  const openListing = (row: ListingRow) => {
+    if (!row.url) return;
+    window.open(row.url, '_blank', 'noopener,noreferrer');
   };
 
-  const columns: Column<Unit>[] = [
-    { key: 'price', header: 'Price', render: unit => formatCurrency(unit.price) },
-    { key: 'floorAreaSqft', header: 'Floor area', render: unit => formatSqft(unit.floorAreaSqft) },
-    { key: 'psf', header: 'Price per sqft', render: unit => formatPsf(unit.psf) },
-    { key: 'bathrooms', header: 'Baths', render: unit => formatNumber(unit.bathrooms) },
-    { key: 'listedLabel', header: 'Listed', render: unit => formatText(unit.listedLabel) },
-    {
-      key: 'agentName',
-      header: 'Agent',
-      render: unit => (
-        <span className='block'>
-          <span className='block text-ink-2'>{formatText(unit.agentName)}</span>
-          <span className='type-ui-caption block'>{formatText(unit.agencyName)}</span>
-        </span>
-      ),
-    },
+  const columns: Column<ListingRow>[] = [
+    { key: 'bedrooms', header: 'Bedrooms', render: row => row.unitTypeLabel },
+    { key: 'bathrooms', header: 'Baths', render: row => formatNumber(row.bathrooms) },
+    { key: 'price', header: 'Price', render: row => formatCurrency(row.price) },
+    { key: 'floorAreaSqft', header: 'Floor area', render: row => formatSqft(row.floorAreaSqft) },
+    { key: 'psf', header: 'Price per sqft', render: row => formatPsf(row.psf) },
+    { key: 'listedLabel', header: 'Listed on', render: row => formatText(row.listedLabel) },
   ];
 
   return (
     <div className='border border-line'>
       <DataTable
         columns={columns}
-        data={units}
-        keyExtractor={unit => String(unit.listingId)}
+        data={rows}
+        keyExtractor={row => String(row.listingId)}
         emptyMessage='No units to show. They may all be hidden.'
         onRowClick={openListing}
-        rowLabel={unit => `Open listing ${unit.listingId}`}
-        actions={unit => (
-          <>
-            <ExternalLink size={16} className='text-ink-4' aria-hidden />
-            <Button
-              variant='ghost'
-              size='icon'
-              className='btn-sm'
-              title='Hide this unit'
-              aria-label={`Hide unit ${unit.listingId}`}
-              onClick={() => onHideUnit(unit)}
-            >
-              <EyeOff size={16} />
-            </Button>
-          </>
+        rowLabel={row => `Open listing ${row.listingId}`}
+        actions={row => (
+          <Button
+            variant='ghost'
+            size='icon'
+            className='btn-sm'
+            title='Hide this unit'
+            aria-label={`Hide unit ${row.listingId}`}
+            onClick={() => onHideUnit(row)}
+          >
+            <EyeOff size={16} />
+          </Button>
         )}
       />
     </div>

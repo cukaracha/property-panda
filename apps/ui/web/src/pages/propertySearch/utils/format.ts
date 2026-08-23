@@ -52,18 +52,3 @@ export function formatSqft(value: number | null | undefined): string {
   if (value === null || value === undefined) return NOT_AVAILABLE;
   return `${value.toLocaleString('en-SG')} sqft`;
 }
-
-/** Render a low to high pair, collapsing to a single value when they match. */
-export function formatRange(
-  min: number | null | undefined,
-  max: number | null | undefined,
-  format: (value: number | null | undefined) => string
-): string {
-  if ((min === null || min === undefined) && (max === null || max === undefined)) {
-    return NOT_AVAILABLE;
-  }
-  if (min === null || min === undefined) return format(max);
-  if (max === null || max === undefined) return format(min);
-  if (min === max) return format(min);
-  return `${format(min)} to ${format(max)}`;
-}

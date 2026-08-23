@@ -95,7 +95,6 @@ export const TENURE_OPTIONS: FilterOption[] = [
   { value: 'L110', label: '110-year leasehold' },
   { value: 'L999', label: '999-year leasehold' },
   { value: 'L9999', label: '9999-year leasehold' },
-  { value: 'NA', label: 'Unknown tenure' },
 ];
 
 export const FLOOR_LEVEL_OPTIONS: FilterOption[] = [
@@ -145,18 +144,6 @@ export const DISTANCE_TO_MRT_OPTIONS: FilterOption[] = [
   { value: '1.5', label: 'Under 1.5 km' },
 ];
 
-export const SORT_OPTIONS: FilterOption[] = [
-  { value: 'date', label: 'Date listed' },
-  { value: 'price', label: 'Price' },
-  { value: 'psf', label: 'Price per sqft' },
-  { value: 'size', label: 'Floor area' },
-];
-
-export const ORDER_OPTIONS: FilterOption[] = [
-  { value: 'desc', label: 'Descending' },
-  { value: 'asc', label: 'Ascending' },
-];
-
 export const LAST_POSTED_OPTIONS: FilterOption[] = [
   { value: '3', label: 'Within 3 days' },
   { value: '7', label: 'Within 1 week' },
@@ -168,10 +155,20 @@ export const KEYWORD_MAX_LENGTH = 100;
 
 export const MAX_PAGES_LABEL = 'Pages to scan';
 
-export const MAX_PAGES_OPTIONS: FilterOption[] = Array.from({ length: 10 }, (_, index) => {
-  const pages = String(index + 1);
-  return { value: pages, label: pages };
-});
+export const MAX_PAGES_ALL = '0';
+
+/**
+ * "All" is the value 0, which the local scraper reads as every page the search has.
+ * It is 0 rather than a word because the request body carries a number, and a value
+ * that did not parse would fall back to a single page without saying so.
+ */
+export const MAX_PAGES_OPTIONS: FilterOption[] = [
+  { value: MAX_PAGES_ALL, label: 'All' },
+  ...Array.from({ length: 10 }, (_, index) => {
+    const pages = String(index + 1);
+    return { value: pages, label: pages };
+  }),
+];
 
 export const DEFAULT_FILTER_FORM: FilterFormState = {
   minPrice: '',
@@ -195,9 +192,7 @@ export const DEFAULT_FILTER_FORM: FilterFormState = {
   distanceToMrt: '',
   keyword: '',
   lastPosted: '',
-  sort: 'date',
-  order: 'desc',
-  maxPages: '3',
+  maxPages: MAX_PAGES_ALL,
 };
 
 /** Add the value when absent, remove it when present. Used by the chip groups. */
@@ -270,8 +265,6 @@ export function buildSearchRequest(form: FilterFormState): SearchRequest {
       withFloorplans: toFlag(form, 'withFloorplans'),
       withStream: toFlag(form, 'withStream'),
       lastPosted: toNumber(form.lastPosted),
-      sort: form.sort || undefined,
-      order: form.order || undefined,
     },
   };
 }
@@ -336,7 +329,8 @@ export function describeFilters(form: FilterFormState): string {
   if (form.lastPosted) {
     parts.push(`listed ${describeCodes(LAST_POSTED_OPTIONS, [form.lastPosted]).toLowerCase()}`);
   }
-  parts.push(`sorted by ${form.sort} ${form.order}`);
-  parts.push(`${form.maxPages} pages scanned`);
+  parts.push(
+    form.maxPages === MAX_PAGES_ALL ? 'all pages scanned' : `${form.maxPages} pages scanned`
+  );
   return parts.join(', ');
 }

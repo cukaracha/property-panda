@@ -28,10 +28,10 @@ function getCopy(pending: PendingHide): HideCopy {
     };
   }
 
-  const { property, unitType, unit } = pending;
+  const { property, row } = pending;
   return {
     title: 'Hide unit',
-    description: `You are about to hide the ${unitType.label} unit at ${formatCurrency(unit.price)} in "${property.name}". It stays in the result set and you can unhide it from the hidden items panel.`,
+    description: `You are about to hide the ${row.unitTypeLabel} unit at ${formatCurrency(row.price)} in "${property.name}". It stays in the result set and you can unhide it from the hidden items panel.`,
     confirmLabel: 'Hide unit',
     checkboxLabel: 'I understand this unit will be hidden from the results.',
     successMessage: 'This unit is now hidden.',
