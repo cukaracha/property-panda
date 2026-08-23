@@ -12,6 +12,7 @@
 #   ./run.sh --reinstall    Rebuild the Python venv and reinstall both dependency trees
 #   ./run.sh --api          Start only the scraper API
 #   ./run.sh --ui           Start only the web app
+#   ./run.sh --no-open      Start as usual, without opening a browser tab
 
 set -e
 
@@ -32,6 +33,7 @@ set -m
 RUN_API=true
 RUN_UI=true
 REINSTALL=false
+OPEN_BROWSER=true
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -42,6 +44,7 @@ RESET=$'\033[0m'
 
 API_PID=""
 UI_PID=""
+OPEN_PID=""
 
 # ============================================================================
 # Helpers
@@ -197,6 +200,31 @@ start_ui() {
     UI_PID=$!
 }
 
+# Vite takes a moment to bind, and a tab opened before then lands on a connection error
+# the browser will not retry. Wait for the port instead, in the background so the service
+# logs keep streaming meanwhile.
+open_when_ready() {
+    local url="http://localhost:$UI_PORT/properties"
+    local waited=0
+
+    while [ -z "$(port_pid $UI_PORT)" ]; do
+        if [ "$waited" -ge 30 ]; then
+            warn "the web app has not come up yet; open $url once it does."
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    if command -v open >/dev/null 2>&1; then
+        open "$url" >/dev/null 2>&1 || true
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url" >/dev/null 2>&1 || true
+    else
+        warn "no browser opener found; open $url yourself."
+    fi
+}
+
 # Signal the whole process group, not just the child, so the API takes chromedriver and
 # any Chrome it opened down with it.
 stop_service() {
@@ -211,6 +239,7 @@ shutdown() {
     trap '' INT TERM
     echo
     info "Stopping"
+    stop_service "$OPEN_PID"
     stop_service "$API_PID"
     stop_service "$UI_PID"
     wait 2>/dev/null || true
@@ -227,8 +256,9 @@ parse_args() {
             --reinstall) REINSTALL=true ;;
             --api)       RUN_UI=false ;;
             --ui)        RUN_API=false ;;
+            --no-open)   OPEN_BROWSER=false ;;
             -h|--help)
-                sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+                sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
                 exit 0
                 ;;
             *) fail "unknown option: $1  (try --help)" ;;
@@ -259,6 +289,11 @@ main() {
     fi
     echo "  ${DIM}Ctrl+C to stop${RESET}"
     echo
+
+    if [ "$RUN_UI" = true ] && [ "$OPEN_BROWSER" = true ]; then
+        open_when_ready &
+        OPEN_PID=$!
+    fi
 
     wait
 }
