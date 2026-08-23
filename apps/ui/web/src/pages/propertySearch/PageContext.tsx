@@ -13,11 +13,10 @@ import {
 } from './utils/format';
 import { toListingRows } from './utils/rows';
 
-export type SearchPhase = 'idle' | 'running' | 'succeeded' | 'failed';
+export type ResultsPhase = 'running' | 'failed' | 'ready';
 
 export interface SearchView {
-  phase: SearchPhase;
-  status: SearchStatus | null;
+  /** Set only when a search could not be started at all, which is the one failure that stays here. */
   errorMessage: string;
   filterSummary: string;
 }
@@ -27,7 +26,10 @@ export interface SearchHandlers {
 }
 
 export interface ResultsView {
-  /** Empty when a refresh restored these results, since the form that ran them did not survive it. */
+  phase: ResultsPhase;
+  status: SearchStatus | null;
+  errorMessage: string;
+  /** Empty when a reload restored this screen, since the form behind it did not survive. */
   filterSummary: string;
   properties: Property[];
   hiddenUnitIds: Set<string>;
@@ -61,6 +63,11 @@ const RESULTS_SUGGESTIONS = [
   'Take me back to the search filters',
 ];
 
+const RUNNING_SUGGESTIONS = [
+  'What is the search doing right now',
+  'Take me back to the search filters',
+];
+
 /**
  * The chat presentation both screens set the same way, and the teardown they
  * both need. Registering a scope per screen is what keeps the assistant panel
@@ -89,24 +96,15 @@ function getSearchDescription(view: SearchView): PageDescription {
   const base = {
     title: 'Property search',
     purpose:
-      'Set the filters for a PropertyGuru scrape and start it. The results are not on this screen: they open on their own screen once the scrape has finished.',
+      'Set the filters for a PropertyGuru scrape and start it. Starting one leaves this screen: the scrape is watched, and its results shown, on the search results screen.',
   };
 
-  if (view.phase === 'running') {
+  if (view.errorMessage) {
     return {
       ...base,
-      layout: 'The filter panel, with a progress overlay raised over it while the scrape runs.',
-      sections: ['Search filters', 'Scrape progress overlay'],
-      notes: `A search is running (${view.status ? STATUS_LABELS[view.status] : 'starting'}). The overlay cannot be dismissed and the filters cannot be changed until it finishes, so do not offer to do either.`,
-    };
-  }
-
-  if (view.phase === 'failed') {
-    return {
-      ...base,
-      layout: 'The filter panel above an error message explaining why the scrape failed.',
+      layout: 'The filter panel above an error message explaining why the search could not start.',
       sections: ['Search filters', 'Search error'],
-      notes: `The search failed: ${view.errorMessage || 'no reason was given'}. Suggest adjusting the filters or running the search again.`,
+      notes: `The search could not be started: ${view.errorMessage}. Nothing is scraping. Suggest adjusting the filters or trying again.`,
     };
   }
 
@@ -121,24 +119,12 @@ function getSearchDescription(view: SearchView): PageDescription {
 
 function getSearchDetails(view: SearchView): string {
   const lines: string[] = ['**Page content**:'];
-
-  if (view.phase === 'running') {
-    lines.push(
-      `A search is running: ${view.status ? STATUS_LABELS[view.status] : 'starting'}.`,
-      `Current filters: ${view.filterSummary}`
-    );
-    return lines.join('\n');
+  if (view.errorMessage) {
+    lines.push(`The last search could not be started: ${view.errorMessage}.`);
+  } else {
+    lines.push('No search has been started from this screen yet.');
   }
-
-  if (view.phase === 'failed') {
-    lines.push(
-      `The last search failed: ${view.errorMessage || 'no reason was given'}.`,
-      `Current filters: ${view.filterSummary}`
-    );
-    return lines.join('\n');
-  }
-
-  lines.push('No search is running.', `Current filters: ${view.filterSummary}`);
+  lines.push(`Current filters: ${view.filterSummary}`);
   return lines.join('\n');
 }
 
@@ -159,7 +145,7 @@ export function useSearchPageContext(view: SearchView, handlers: SearchHandlers)
 
   useChatSurface('Property search', SEARCH_SUGGESTIONS);
 
-  const signature = [view.phase, view.status ?? '', view.errorMessage].join('|');
+  const signature = view.errorMessage;
 
   useEffect(() => {
     const actions: Action[] = [
@@ -197,6 +183,24 @@ function getResultsDescription(view: ResultsView): PageDescription {
     'Property cards',
     ...(view.showHidden ? ['Hidden items panel'] : []),
   ];
+
+  if (view.phase === 'running') {
+    return {
+      ...base,
+      layout: 'A back link above a progress card counting through the steps of the scrape.',
+      sections: ['Back to search', 'Scrape progress'],
+      notes: `The scrape is still running (${view.status ? STATUS_LABELS[view.status] : 'starting'}) and no results are on screen yet, so do not describe any property. It cannot be cancelled. Leaving for the filters does not stop it, and coming back to this screen picks it up again.`,
+    };
+  }
+
+  if (view.phase === 'failed') {
+    return {
+      ...base,
+      layout: 'A back link above an error message explaining why the scrape failed.',
+      sections: ['Back to search', 'Search error'],
+      notes: `The scrape failed: ${view.errorMessage || 'no reason was given'}. There are no results. Suggest going back to the filters to adjust them and run it again.`,
+    };
+  }
 
   if (view.expired) {
     return {
@@ -262,6 +266,19 @@ function getResultsDetails(view: ResultsView): string {
     ? `The filters that ran this search: ${view.filterSummary}`
     : 'The filters that ran this search are not on record, because the page was reloaded since. Do not guess at them.';
 
+  if (view.phase === 'running') {
+    lines.push(
+      `The scrape is running: ${view.status ? STATUS_LABELS[view.status] : 'starting'}.`,
+      filters
+    );
+    return lines.join('\n');
+  }
+
+  if (view.phase === 'failed') {
+    lines.push(`The scrape failed: ${view.errorMessage || 'no reason was given'}.`, filters);
+    return lines.join('\n');
+  }
+
   if (view.expired) {
     lines.push('These results have expired and are no longer available.', filters);
     return lines.join('\n');
@@ -310,11 +327,18 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     handlersRef.current = handlers;
   });
 
-  useChatSurface('Search results', RESULTS_SUGGESTIONS);
+  useChatSurface(
+    'Search results',
+    view.phase === 'ready' ? RESULTS_SUGGESTIONS : RUNNING_SUGGESTIONS
+  );
 
   // Re-register whenever what is on screen changes shape, so the description never
-  // describes a card or a row the user has already hidden.
+  // describes a card or a row the user has already hidden, and the hide actions are
+  // never offered while there is nothing on screen to hide.
   const signature = [
+    view.phase,
+    view.status ?? '',
+    view.errorMessage,
     view.expired,
     view.showHidden,
     view.hidden.length,
@@ -322,7 +346,9 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
   ].join('|');
 
   useEffect(() => {
-    const actions: Action[] = [
+    // Only the way back exists while the scrape is still running or has failed.
+    // There are no cards on screen then, so there is nothing to hide or unhide.
+    const resultActions: Action[] = [
       {
         name: 'hide_property',
         description:
@@ -349,10 +375,14 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
         display: params => `Unhide ${params.entityKey}`,
         callback: params => handlersRef.current.onUnhide(params.entityKey),
       },
+    ];
+
+    const actions: Action[] = [
+      ...(viewRef.current.phase === 'ready' ? resultActions : []),
       {
         name: 'back_to_search',
         description:
-          'Leave the results and go back to the search filters, which are still set to whatever ran this search.',
+          'Leave this screen and go back to the search filters. A scrape that is still running is not stopped by leaving, and coming back picks it up again.',
         parameters: {},
         example: '{"name": "back_to_search"}',
         display: () => 'Go back to the search filters',

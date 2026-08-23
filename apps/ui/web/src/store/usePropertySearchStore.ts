@@ -10,10 +10,11 @@
  * the page wants: the form survives the trip to the results and back, and a refresh
  * of the filters starts clean.
  *
- * The results are persisted, so a refresh of the results route still has something
- * to render. sessionStorage rather than localStorage because a result set belongs
- * to the sitting that scraped it, and one from last week should not still be on
- * screen as though the scrape had just run.
+ * The job id and the results are persisted, so a refresh of the results route
+ * either picks the running scrape back up or lands on the results it already
+ * finished. sessionStorage rather than localStorage because both belong to the
+ * sitting that scraped them, and a result set from last week should not still be
+ * on screen as though the scrape had just run.
  */
 
 import { create } from 'zustand';
@@ -70,29 +71,41 @@ export const usePropertySearchStore = create<PropertySearchFormStore>(set => ({
 }));
 
 interface PropertySearchResultsStore {
+  /**
+   * The job the results screen watches. Set when a search starts and cleared once
+   * its results are in hand, so it is non-null exactly while there is something to
+   * poll. A failed job keeps its id, which is what leaves the failure on screen
+   * and re-readable after a reload.
+   */
+  jobId: string | null;
   /** The terminal poll payload of the last successful search, or null when there is none. */
   results: SearchResultsResponse | null;
   /**
-   * True when the results came from a search run in this page load, which is what
-   * says the filter form still holds the filters that produced them. It is not
-   * persisted, so it is false again once a refresh has restored the results from
-   * storage and left the form at its defaults.
+   * True when the search was started in this page load, which is what says the
+   * filter form still holds the filters behind what is on screen. It is not
+   * persisted, so a reload leaves it false and the filters are reported as
+   * unknown rather than read off a form that has reset to its defaults.
    */
-  fromThisLoad: boolean;
+  filtersOnRecord: boolean;
+  startJob: (jobId: string) => void;
   setResults: (results: SearchResultsResponse) => void;
 }
 
 export const usePropertySearchResultsStore = create<PropertySearchResultsStore>()(
   persist(
     set => ({
+      jobId: null,
       results: null,
-      fromThisLoad: false,
-      setResults: results => set({ results, fromThisLoad: true }),
+      filtersOnRecord: false,
+      // The previous search's results go with it. They are not what this job is
+      // scraping, and leaving them would put stale cards under a live progress card.
+      startJob: jobId => set({ jobId, results: null, filtersOnRecord: true }),
+      setResults: results => set({ results, jobId: null }),
     }),
     {
       name: RESULTS_KEY,
       storage: createJSONStorage(() => safeSessionStorage),
-      partialize: state => ({ results: state.results }),
+      partialize: state => ({ jobId: state.jobId, results: state.results }),
     }
   )
 );
