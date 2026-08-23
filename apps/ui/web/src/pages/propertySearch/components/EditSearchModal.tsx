@@ -1,22 +1,28 @@
 import { useState } from 'react';
-import { Eye, Pencil } from 'lucide-react';
+import { BookmarkX, Eye, Pencil } from 'lucide-react';
 import Modal from '../../../components/modals/Modal';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import SearchFilterFields from './SearchFilterFields';
 import { SAVED_SEARCH_NAME_MAX_LENGTH } from './SaveSearchModal';
-import type { FilterFormState, HiddenEntity } from '../../../types/listings';
+import type { BookmarkedEntity, FilterFormState, HiddenEntity } from '../../../types/listings';
 import { buildSearchRequest } from '../utils/filterOptions';
 
 export interface EditSearchModalProps {
   name: string;
   form: FilterFormState;
   hidden: HiddenEntity[];
+  bookmarked: BookmarkedEntity[];
   /** "Save and rerun" from the results, "Save" from the saved searches list. */
   confirmLabel: string;
   isSaving: boolean;
   onClose: () => void;
-  onSave: (name: string, form: FilterFormState, hidden: HiddenEntity[]) => void;
+  onSave: (
+    name: string,
+    form: FilterFormState,
+    hidden: HiddenEntity[],
+    bookmarked: BookmarkedEntity[]
+  ) => void;
 }
 
 const GROUPS: { scope: HiddenEntity['scope']; title: string }[] = [
@@ -33,17 +39,18 @@ function describeRequest(form: FilterFormState): string {
   return JSON.stringify(buildSearchRequest(form));
 }
 
-function describeHidden(entities: HiddenEntity[]): string {
+function describeKeys(entities: { entityKey: string }[]): string {
   return entities.map(entity => entity.entityKey).join('|');
 }
 
 /**
- * Edits one saved search: its name, its filters, and the items it hides.
+ * Edits one saved search: its name, its filters, the items it hides and the properties
+ * it pins to the top.
  *
- * All three in one modal because they are one thing to the user, and nothing here
- * touches the stored search until the footer is pressed. Cancel throws the draft away,
- * which is what makes unhiding something in here safe to try. The footer stays disabled
- * until something actually differs from what is stored.
+ * All of it in one modal because it is one thing to the user, and nothing here touches
+ * the stored search until the footer is pressed. Cancel throws the draft away, which is
+ * what makes unhiding or unpinning something in here safe to try. The footer stays
+ * disabled until something actually differs from what is stored.
  *
  * The caller mounts this only while it is open, so each opening starts from what is
  * stored rather than from a draft left over from the last time.
@@ -52,6 +59,7 @@ export default function EditSearchModal({
   name,
   form,
   hidden,
+  bookmarked,
   confirmLabel,
   isSaving,
   onClose,
@@ -60,6 +68,7 @@ export default function EditSearchModal({
   const [draftName, setDraftName] = useState(name);
   const [draftForm, setDraftForm] = useState(form);
   const [draftHidden, setDraftHidden] = useState(hidden);
+  const [draftBookmarked, setDraftBookmarked] = useState(bookmarked);
 
   const trimmed = draftName.trim();
   // Saving from the results screen also re-runs the scrape, which opens a browser
@@ -67,11 +76,12 @@ export default function EditSearchModal({
   const hasChanges =
     trimmed !== name.trim() ||
     describeRequest(draftForm) !== describeRequest(form) ||
-    describeHidden(draftHidden) !== describeHidden(hidden);
+    describeKeys(draftHidden) !== describeKeys(hidden) ||
+    describeKeys(draftBookmarked) !== describeKeys(bookmarked);
 
   const save = () => {
     if (!trimmed || !hasChanges || isSaving) return;
-    onSave(trimmed, draftForm, draftHidden);
+    onSave(trimmed, draftForm, draftHidden, draftBookmarked);
   };
 
   return (
@@ -80,7 +90,7 @@ export default function EditSearchModal({
       onClose={onClose}
       dismissible={!isSaving}
       title='Edit search'
-      description='Change the name, the filters, or the items this search keeps hidden.'
+      description='Change the name, the filters, or what this search keeps hidden and pinned.'
       maxWidth='max-w-3xl'
       icon={
         <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent-line bg-accent-soft text-cyan'>
@@ -154,6 +164,33 @@ export default function EditSearchModal({
                 </div>
               );
             })
+          )}
+        </div>
+
+        <div className='mt-5 space-y-4 border-t border-line pt-4'>
+          <p className='type-ui-eyebrow'>Bookmarked properties</p>
+          {draftBookmarked.length === 0 ? (
+            <p className='type-ui-sm text-ink-3'>This search bookmarks nothing.</p>
+          ) : (
+            <ul className='divide-y divide-line-2 border-y border-line'>
+              {draftBookmarked.map(entity => (
+                <li key={entity.entityKey} className='flex items-center justify-between gap-3 py-2'>
+                  <span className='min-w-0 truncate text-sm text-ink-2'>{entity.label}</span>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={() =>
+                      setDraftBookmarked(current =>
+                        current.filter(item => item.entityKey !== entity.entityKey)
+                      )
+                    }
+                  >
+                    <BookmarkX size={16} />
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

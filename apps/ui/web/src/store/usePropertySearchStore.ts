@@ -11,8 +11,8 @@
  * of the filters starts clean.
  *
  * The results store holds the whole of the current search: the job id, the results,
- * a snapshot of the filters that produced them, the items it hides, and the saved
- * search it came from when it came from one. All of it is persisted, so a refresh of
+ * a snapshot of the filters that produced them, the items it hides, the properties it
+ * pins to the top, and the saved search it came from when it came from one. All of it is persisted, so a refresh of
  * the results route either picks the running scrape back up or lands on the results
  * it already finished, and either way still knows what was searched for. The snapshot
  * is a copy rather than a read of the live form, which is what lets the results screen
@@ -23,7 +23,12 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
-import type { FilterFormState, HiddenEntity, SearchResultsResponse } from '../types/listings';
+import type {
+  BookmarkedEntity,
+  FilterFormState,
+  HiddenEntity,
+  SearchResultsResponse,
+} from '../types/listings';
 import { DEFAULT_FILTER_FORM } from '../pages/propertySearch/utils/filterOptions';
 
 const RESULTS_KEY = 'property-search-results';
@@ -92,11 +97,17 @@ interface PropertySearchResultsStore {
   savedSearchName: string | null;
   /** The properties and units this search hides, newest first. */
   hidden: HiddenEntity[];
+  /** The properties this search pins to the top of its results, newest first. */
+  bookmarked: BookmarkedEntity[];
   startJob: (jobId: string, form: FilterFormState, saved: SavedSearchLink | null) => void;
   setResults: (results: SearchResultsResponse) => void;
-  /** Attach a search that has just been saved, keeping the items it already hides. */
+  /**
+   * Attach a search that has just been saved, keeping the items it already hides and
+   * the properties it already pins.
+   */
   linkSavedSearch: (searchId: string, name: string) => void;
   setHidden: (hidden: HiddenEntity[]) => void;
+  setBookmarked: (bookmarked: BookmarkedEntity[]) => void;
 }
 
 /** What a search carries over from the saved search it was started from. */
@@ -104,6 +115,7 @@ export interface SavedSearchLink {
   searchId: string;
   name: string;
   hidden: HiddenEntity[];
+  bookmarked: BookmarkedEntity[];
 }
 
 export const usePropertySearchResultsStore = create<PropertySearchResultsStore>()(
@@ -115,10 +127,11 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
       savedSearchId: null,
       savedSearchName: null,
       hidden: [],
+      bookmarked: [],
       // The previous search's results go with it. They are not what this job is
       // scraping, and leaving them would put stale cards under a live progress card.
-      // A run from the filters starts with nothing hidden, a saved one starts with
-      // whatever it was keeping hidden when it was last run.
+      // A run from the filters starts with nothing hidden and nothing pinned, a saved
+      // one starts with whatever it was keeping when it was last run.
       startJob: (jobId, form, saved) =>
         set({
           jobId,
@@ -127,10 +140,12 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
           savedSearchId: saved?.searchId ?? null,
           savedSearchName: saved?.name ?? null,
           hidden: saved?.hidden ?? [],
+          bookmarked: saved?.bookmarked ?? [],
         }),
       setResults: results => set({ results, jobId: null }),
       linkSavedSearch: (searchId, name) => set({ savedSearchId: searchId, savedSearchName: name }),
       setHidden: hidden => set({ hidden }),
+      setBookmarked: bookmarked => set({ bookmarked }),
     }),
     {
       name: RESULTS_KEY,
@@ -142,6 +157,7 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
         savedSearchId: state.savedSearchId,
         savedSearchName: state.savedSearchName,
         hidden: state.hidden,
+        bookmarked: state.bookmarked,
       }),
     }
   )

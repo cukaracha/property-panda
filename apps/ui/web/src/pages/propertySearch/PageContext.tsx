@@ -2,7 +2,13 @@ import { useEffect, useRef } from 'react';
 import usePageContextStore, { type PageDescription } from '../../store/usePageContextStore';
 import { useChatSurface } from '../../hooks/useChatSurface';
 import type { Action } from '../../types/chatbot';
-import type { HiddenEntity, Property, SavedSearch, SearchStatus } from '../../types/listings';
+import type {
+  BookmarkedEntity,
+  HiddenEntity,
+  Property,
+  SavedSearch,
+  SearchStatus,
+} from '../../types/listings';
 import {
   formatCurrency,
   formatNumber,
@@ -39,6 +45,8 @@ export interface ResultsView {
   properties: Property[];
   hiddenUnitIds: Set<string>;
   hidden: HiddenEntity[];
+  bookmarked: BookmarkedEntity[];
+  bookmarkedPropertyIds: Set<string>;
   shortlistedIds: Set<string>;
   showHidden: boolean;
   expired: boolean;
@@ -50,6 +58,8 @@ export interface ResultsHandlers {
   onHideProperty: (propertyId: string) => void;
   onHideUnit: (listingId: string) => void;
   onUnhide: (entityKey: string) => void;
+  onBookmarkProperty: (propertyId: string) => void;
+  onRemoveBookmark: (propertyId: string) => void;
   onShortlistUnit: (listingId: string) => void;
   onRemoveFromShortlist: (listingId: string) => void;
   onBackToSearch: () => void;
@@ -101,7 +111,7 @@ function getSearchDescription(view: SearchView): PageDescription {
     layout: 'A single column holding the search filter panel above the saved searches panel.',
     sections: ['Search filters', 'Saved searches'],
     notes:
-      'Only the filters and the saved searches are on screen, so there is nothing to describe about any property yet. The user sets the filters and starts a search, and you can start it on their behalf. A saved search is run by clicking its row, which starts a scrape with its stored filters and leaves for the results screen. Each saved search also carries the properties and units it hides, which come back with it on every run.',
+      'Only the filters and the saved searches are on screen, so there is nothing to describe about any property yet. The user sets the filters and starts a search, and you can start it on their behalf. A saved search is run by clicking its row, which starts a scrape with its stored filters and leaves for the results screen. Each saved search also carries the properties and units it hides and the properties it bookmarks, which come back with it on every run.',
   };
 }
 
@@ -120,8 +130,9 @@ function getSearchDetails(view: SearchView): string {
     lines.push('Saved searches:');
     for (const saved of view.savedSearches) {
       const hiddenCount = saved.hidden.length;
+      const bookmarkedCount = saved.bookmarked.length;
       lines.push(
-        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}`
+        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}, bookmarking ${bookmarkedCount} ${bookmarkedCount === 1 ? 'property' : 'properties'}`
       );
     }
   }
@@ -198,7 +209,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
   const base = {
     title: 'Search results',
     purpose:
-      'Browse the properties the last PropertyGuru scrape returned, shortlist the units worth keeping, and hide the ones the user does not want to see.',
+      'Browse the properties the last PropertyGuru scrape returned, shortlist the units worth keeping, bookmark the properties worth keeping at the top, and hide the ones the user does not want to see.',
   };
 
   const sections = [
@@ -251,15 +262,15 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Shortlisting is separate from hiding and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeSavedState(view)}`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeSavedState(view)}`,
   };
 }
 
 /** Whether these results are a saved search, which decides if saving is offered. */
 function describeSavedState(view: ResultsView): string {
   return view.savedSearchName
-    ? `These results are the saved search "${view.savedSearchName}", so hiding or unhiding anything updates it straight away.`
-    : 'These results are not saved. Saving them keeps the filters and the hidden items together under a name.';
+    ? `These results are the saved search "${view.savedSearchName}", so hiding, unhiding or bookmarking anything updates it straight away.`
+    : 'These results are not saved. Saving them keeps the filters, the hidden items and the bookmarks together under a name.';
 }
 
 function describeProperty(
@@ -327,8 +338,9 @@ function getResultsDetails(view: ResultsView): string {
   );
 
   for (const property of view.properties) {
+    const pinned = view.bookmarkedPropertyIds.has(property.propertyId) ? ', bookmarked' : '';
     lines.push(
-      `- ${property.name} (propertyId ${property.propertyId}), ${describeProperty(property, view.hiddenUnitIds, view.shortlistedIds)}`
+      `- ${property.name} (propertyId ${property.propertyId})${pinned}, ${describeProperty(property, view.hiddenUnitIds, view.shortlistedIds)}`
     );
   }
 
@@ -352,13 +364,23 @@ function getResultsDetails(view: ResultsView): string {
     }
   }
 
+  if (view.bookmarked.length === 0) {
+    lines.push('Bookmarked properties in these results: none.');
+  } else {
+    lines.push('Bookmarked properties in these results, pinned to the top in this order:');
+    for (const entity of view.bookmarked) {
+      lines.push(`- ${entity.label} (propertyId ${entity.id})`);
+    }
+  }
+
   return lines.join('\n');
 }
 
 /**
  * Results screen page context. Registers what is on screen plus the actions that
- * belong to it: hiding a property or a unit, undoing either, saving the search that
- * produced the results while it is still unsaved, and going back to the filters.
+ * belong to it: hiding a property or a unit, undoing either, pinning a property to the
+ * top and unpinning it, saving the search that produced the results while it is still
+ * unsaved, and going back to the filters.
  * Editing a saved search is not offered: fourteen groups of filters do not fit in an
  * action payload, so that one stays a button on the screen.
  */
@@ -390,6 +412,7 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     view.hidden.length,
     view.savedSearchName ?? '',
     view.properties.map(property => property.propertyId).join(','),
+    [...view.bookmarkedPropertyIds].sort().join(','),
     [...view.shortlistedIds].sort().join(','),
   ].join('|');
 
@@ -442,9 +465,27 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
         callback: params => handlersRef.current.onRemoveFromShortlist(params.listingId),
       },
       {
+        name: 'bookmark_property',
+        description:
+          'Bookmark a property, which pins its card to the top of these results and keeps it there on every later run of this search. Do not use it on a property already marked as bookmarked.',
+        parameters: { propertyId: 'The propertyId of the property to bookmark.' },
+        example: '{"name": "bookmark_property", "propertyId": "925"}',
+        display: params => `Bookmark property ${params.propertyId}`,
+        callback: params => handlersRef.current.onBookmarkProperty(params.propertyId),
+      },
+      {
+        name: 'remove_bookmark',
+        description:
+          'Remove a property bookmark, so its card drops back into the order the scrape returned. Only for properties already marked as bookmarked.',
+        parameters: { propertyId: 'The propertyId of the property to unbookmark.' },
+        example: '{"name": "remove_bookmark", "propertyId": "925"}',
+        display: params => `Remove the bookmark on property ${params.propertyId}`,
+        callback: params => handlersRef.current.onRemoveBookmark(params.propertyId),
+      },
+      {
         name: 'save_search',
         description:
-          'Save the filters that produced these results under a name, along with the items they hide, so the whole search can be run again from the search screen.',
+          'Save the filters that produced these results under a name, along with the items they hide and the properties they bookmark, so the whole search can be run again from the search screen.',
         // searchName, not name: the action's own name is already the `name` key, so a
         // parameter called the same thing would overwrite it in the action JSON.
         parameters: { searchName: 'A short name for the saved search.' },

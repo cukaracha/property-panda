@@ -217,11 +217,42 @@ def clean_hidden(item: dict) -> tuple:
     return scope, entity_id, (label or "")[:200]
 
 
+def clean_bookmark(item: dict) -> tuple:
+    """Validate one bookmarked property, returning (id, label).
+
+    Bookmarks are properties only, because a bookmark pins a card to the top of the
+    results and a unit has no card of its own to pin.
+    """
+    if not isinstance(item, dict):
+        raise ValueError("each bookmarked item must be an object")
+
+    if item.get("scope") not in (None, "property"):
+        raise ValueError("bookmarks are properties only")
+
+    entity_id = item.get("id")
+    if isinstance(entity_id, bool) or not isinstance(entity_id, (int, str, type(None))):
+        raise ValueError("id must be a string or a number")
+    entity_id = str(entity_id or "").strip()
+    if not entity_id:
+        raise ValueError("id is required")
+    if len(entity_id) > 100:
+        raise ValueError("id is too long")
+
+    label = item.get("label")
+    if label is not None and not isinstance(label, str):
+        raise ValueError("label must be a string")
+
+    return entity_id, (label or "")[:200]
+
+
 SAVED_SEARCH_NAME_MAX_CHARS = 80
 SEARCH_ID_MAX_CHARS = 64
 # Hiding is per search, so the list is bounded per search too. Far more than anyone
 # hides by hand, and low enough that a saved search stays a small row.
 MAX_HIDDEN_PER_SEARCH = 500
+# Bookmarks are bounded lower than hidden items, because the pinned block sits at the
+# top of the results and stops being useful once it stops being scannable.
+MAX_BOOKMARKED_PER_SEARCH = 200
 
 
 def clean_hidden_list(raw) -> list:
@@ -256,8 +287,43 @@ def clean_hidden_list(raw) -> list:
     return sorted(cleaned.values(), key=lambda item: item["createdAt"], reverse=True)
 
 
+def clean_bookmarked_list(raw) -> list:
+    """Validate a search's bookmarked properties, returning them newest first.
+
+    The mirror of clean_hidden_list: the key and the timestamp are rebuilt here rather
+    than trusted, and a repeated key keeps its first appearance.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("bookmarked must be a list")
+    if len(raw) > MAX_BOOKMARKED_PER_SEARCH:
+        raise ValueError(
+            f"A search can bookmark at most {MAX_BOOKMARKED_PER_SEARCH} properties"
+        )
+
+    now = int(time.time())
+    cleaned = {}
+    for item in raw:
+        entity_id, label = clean_bookmark(item)
+        entity_key = f"property#{entity_id}"
+        if entity_key in cleaned:
+            continue
+        created_at = clean_int(item.get("createdAt"), "createdAt")
+        cleaned[entity_key] = {
+            "entityKey": entity_key,
+            "scope": "property",
+            "id": entity_id,
+            "label": label,
+            "createdAt": created_at if created_at is not None else now,
+        }
+    return sorted(cleaned.values(), key=lambda item: item["createdAt"], reverse=True)
+
+
 def clean_saved_search(body: dict) -> tuple:
-    """Validate a save request, returning (name, source, maxPages, filters, hidden).
+    """Validate a save request.
+
+    Returns (name, source, maxPages, filters, hidden, bookmarked).
 
     The request half goes through build_request, so a saved search is held to exactly
     the same rules as the search it came from and there is no second filter validator
@@ -271,7 +337,14 @@ def clean_saved_search(body: dict) -> tuple:
         raise ValueError("name is required")
 
     source, pages, filters = build_request(body.get("request") or {})
-    return name, source, pages, filters, clean_hidden_list(body.get("hidden"))
+    return (
+        name,
+        source,
+        pages,
+        filters,
+        clean_hidden_list(body.get("hidden")),
+        clean_bookmarked_list(body.get("bookmarked")),
+    )
 
 
 def clean_hidden_update(body: dict) -> list:
@@ -279,6 +352,13 @@ def clean_hidden_update(body: dict) -> list:
     if not isinstance(body, dict):
         raise ValueError("Request body must be a JSON object")
     return clean_hidden_list(body.get("hidden"))
+
+
+def clean_bookmarked_update(body: dict) -> list:
+    """Validate a request that carries a saved search's bookmarked list on its own."""
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+    return clean_bookmarked_list(body.get("bookmarked"))
 
 
 def clean_search_id(search_id: str) -> str:

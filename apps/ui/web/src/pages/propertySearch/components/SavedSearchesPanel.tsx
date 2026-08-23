@@ -18,10 +18,13 @@ export interface SavedSearchesPanelProps {
   onDelete: (search: SavedSearch) => void;
 }
 
-function describeHidden(search: SavedSearch): string {
-  const count = search.hidden.length;
-  if (count === 0) return '';
-  return count === 1 ? '1 item hidden' : `${count} items hidden`;
+function describeLists(search: SavedSearch): string {
+  const parts = [];
+  const hiddenCount = search.hidden.length;
+  const bookmarkedCount = search.bookmarked.length;
+  if (hiddenCount) parts.push(hiddenCount === 1 ? '1 item hidden' : `${hiddenCount} items hidden`);
+  if (bookmarkedCount) parts.push(`${bookmarkedCount} bookmarked`);
+  return parts.join(', ');
 }
 
 /**
@@ -71,7 +74,7 @@ export default function SavedSearchesPanel({
           <p className='type-ui-sm mt-1 text-ink-3'>Click one to run it again.</p>
           <ul className='mt-4 divide-y divide-line-2 border-y border-line'>
             {savedSearches.map(search => {
-              const hiddenSummary = describeHidden(search);
+              const listSummary = describeLists(search);
               return (
                 <li
                   key={search.searchId}
@@ -91,7 +94,7 @@ export default function SavedSearchesPanel({
                     <p className='truncate text-sm text-ink-2'>{search.name}</p>
                     <p className='type-ui-sm truncate text-ink-3'>
                       {describeFilters(toFilterForm(search))}
-                      {hiddenSummary && ` (${hiddenSummary})`}
+                      {listSummary && ` (${listSummary})`}
                     </p>
                   </div>
                   <div className='flex flex-shrink-0 items-center gap-1'>

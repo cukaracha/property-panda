@@ -12,7 +12,12 @@ import {
   usePropertySearchResultsStore,
   usePropertySearchStore,
 } from '../../store/usePropertySearchStore';
-import type { FilterFormState, HiddenEntity, SavedSearch } from '../../types/listings';
+import type {
+  BookmarkedEntity,
+  FilterFormState,
+  HiddenEntity,
+  SavedSearch,
+} from '../../types/listings';
 import { buildSearchRequest, describeFilters, toFilterForm } from './utils/filterOptions';
 
 /**
@@ -25,8 +30,8 @@ import { buildSearchRequest, describeFilters, toFilterForm } from './utils/filte
  * The only failure that stays on this screen is a search that never started,
  * since that is the one the filters can be changed to fix.
  *
- * Clicking a saved search runs it, carrying its stored hidden items into the new
- * results. Editing one from its menu changes the stored row and stops there, which
+ * Clicking a saved search runs it, carrying its stored hidden items and bookmarks
+ * into the new results. Editing one from its menu changes the stored row and stops there, which
  * is the difference between that modal and the one on the results screen.
  */
 export default function PropertySearch() {
@@ -56,7 +61,7 @@ export default function PropertySearch() {
   };
 
   // The saved row goes with the job, so the results screen knows which search it is
-  // showing and hides what that search was already hiding.
+  // showing, hides what that search was already hiding and pins what it already pinned.
   const runSavedSearch = async (saved: SavedSearch) => {
     setRunningSearchId(saved.searchId);
     const savedForm = toFilterForm(saved);
@@ -68,6 +73,7 @@ export default function PropertySearch() {
       searchId: saved.searchId,
       name: saved.name,
       hidden: saved.hidden,
+      bookmarked: saved.bookmarked,
     });
     navigate('/properties/results');
   };
@@ -77,14 +83,20 @@ export default function PropertySearch() {
     if (saved) runSavedSearch(saved);
   };
 
-  const saveEdit = async (name: string, edited: FilterFormState, hidden: HiddenEntity[]) => {
+  const saveEdit = async (
+    name: string,
+    edited: FilterFormState,
+    hidden: HiddenEntity[],
+    bookmarked: BookmarkedEntity[]
+  ) => {
     if (!editing) return;
     setIsUpdating(true);
     const saved = await updateSavedSearch(
       editing.searchId,
       name,
       buildSearchRequest(edited),
-      hidden
+      hidden,
+      bookmarked
     );
     setIsUpdating(false);
     if (saved) setEditing(null);
@@ -139,6 +151,7 @@ export default function PropertySearch() {
           name={editing.name}
           form={toFilterForm(editing)}
           hidden={editing.hidden}
+          bookmarked={editing.bookmarked}
           confirmLabel='Save'
           isSaving={isUpdating}
           onClose={() => setEditing(null)}

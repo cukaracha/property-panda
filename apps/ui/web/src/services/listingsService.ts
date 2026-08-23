@@ -12,13 +12,15 @@
  * running twice does not have to be retyped. Each one carries the properties and
  * units it hides, because hiding belongs to the search that turned them up: the
  * page keeps the full result set and filters at render time, so unhiding puts a
- * row straight back without re-running the scrape.
+ * row straight back without re-running the scrape. Bookmarks ride along the same
+ * way, pinning a property to the top of every run of that search.
  *
  * The shortlist is the opposite arrangement on purpose. It belongs to the app rather
  * than to a search, so it is one collection of its own, and it stores each unit whole
  * rather than by id, so it outlives the job that found it.
  */
 import type {
+  BookmarkedEntity,
   HiddenEntity,
   ListSavedSearchesResponse,
   MutationResponse,
@@ -89,31 +91,33 @@ export async function listSavedSearches(): Promise<ListSavedSearchesResponse> {
 export async function createSavedSearch(
   name: string,
   request: SearchRequest,
-  hidden: HiddenEntity[]
+  hidden: HiddenEntity[],
+  bookmarked: BookmarkedEntity[]
 ): Promise<SavedSearch> {
   const response = await fetch(`${API_URL}/listings/saved-searches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, request, hidden }),
+    body: JSON.stringify({ name, request, hidden, bookmarked }),
   });
   const data = await readBody<SavedSearch>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to save the search');
   return data;
 }
 
-/** Replace one saved search's name, request and hidden items. */
+/** Replace one saved search's name, request, hidden items and bookmarks. */
 export async function updateSavedSearch(
   searchId: string,
   name: string,
   request: SearchRequest,
-  hidden: HiddenEntity[]
+  hidden: HiddenEntity[],
+  bookmarked: BookmarkedEntity[]
 ): Promise<SavedSearch> {
   const response = await fetch(
     `${API_URL}/listings/saved-searches/${encodeURIComponent(searchId)}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, request, hidden }),
+      body: JSON.stringify({ name, request, hidden, bookmarked }),
     }
   );
   const data = await readBody<SavedSearch>(response);
@@ -140,6 +144,27 @@ export async function updateSavedSearchHidden(
   );
   const data = await readBody<SavedSearch>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to update the hidden items');
+  return data;
+}
+
+/**
+ * Replace one saved search's bookmarked properties, leaving its filters alone. The
+ * mirror of updateSavedSearchHidden, and its own call for the same reason.
+ */
+export async function updateSavedSearchBookmarked(
+  searchId: string,
+  bookmarked: BookmarkedEntity[]
+): Promise<SavedSearch> {
+  const response = await fetch(
+    `${API_URL}/listings/saved-searches/${encodeURIComponent(searchId)}/bookmarked`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookmarked }),
+    }
+  );
+  const data = await readBody<SavedSearch>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to update the bookmarks');
   return data;
 }
 

@@ -139,6 +139,19 @@ export interface HiddenEntity {
   createdAt: number;
 }
 
+/**
+ * A property pinned to the top of its search's results. The same shape as a hidden
+ * entity, with the scope fixed: pinning is a card level idea, so a unit has nothing
+ * of its own to pin.
+ */
+export interface BookmarkedEntity {
+  entityKey: string;
+  scope: 'property';
+  id: string;
+  label: string;
+  createdAt: number;
+}
+
 export type PendingHide =
   | { scope: 'property'; property: Property }
   | { scope: 'unit'; property: Property; row: ListingRow };
@@ -240,7 +253,8 @@ export interface SearchRequest {
  * repopulated from it through toFilterForm.
  *
  * Hiding is part of the search rather than a list of its own, so re-running a saved
- * search brings back the same properties and units dismissed the last time.
+ * search brings back the same properties and units dismissed the last time, and
+ * bookmarking rides along with it for the same reason.
  */
 export interface SavedSearch {
   searchId: string;
@@ -249,6 +263,7 @@ export interface SavedSearch {
   maxPages: number;
   filters: SearchFilters;
   hidden: HiddenEntity[];
+  bookmarked: BookmarkedEntity[];
   createdAt: number;
 }
 

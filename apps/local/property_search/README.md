@@ -114,7 +114,7 @@ Each of these is read from the environment at start-up, so
 | `PROPERTY_FAIL_TTL_SECONDS` | 1 day    | How long a project page that failed is left alone     |
 | `CHAT_MODEL`                | `sonnet` | The model alias the assistant runs on                 |
 
-## Saved searches and hiding
+## Saved searches, hiding and bookmarking
 
 A saved search is the request body itself, kept under a name in
 `.data/saved_searches.json` so a set of filters worth running twice does not
@@ -127,6 +127,13 @@ so it is stored inside that search's row rather than in a list of its own: a
 search hides the same things every time it runs, and hiding something in one
 search leaves every other search alone. A search the user has not saved keeps
 its hidden items in the browser until they do.
+
+Bookmarking is the mirror of hiding and is kept in the same row for the same
+reason. It sorts instead of filtering: a bookmarked property is pinned to the
+top of the results, and removing the bookmark drops its card back where the
+scrape put it. Bookmarks are properties only, since a unit has no card of its
+own to pin, and hiding still wins, so a property that is both stays off screen
+until it is unhidden. Both lists come back on every run of the search.
 
 ## Shortlisting
 

@@ -1,10 +1,11 @@
-import { EyeOff, ExternalLink, MapPin } from 'lucide-react';
+import { Bookmark, EyeOff, ExternalLink, MapPin } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import PropertyInfo from './PropertyInfo';
 import UnitsTable from './UnitsTable';
 import type { ListingRow, Property } from '../../types/listings';
+import { cn } from '../../lib/utils';
 import { formatText } from '../../lib/listingsFormat';
 import { toListingRows } from '../../lib/listingRows';
 
@@ -16,6 +17,9 @@ export interface PropertyCardProps {
   hiddenUnitIds?: Set<string>;
   onHideProperty?: (property: Property) => void;
   onHideUnit?: (property: Property, row: ListingRow) => void;
+  /** Also absent there, since a bookmark pins a card to the top of a result set. */
+  isBookmarked?: boolean;
+  onToggleBookmark?: (property: Property) => void;
   /** A line under the header, for whatever the screen needs to say about this card. */
   caption?: string;
   emptyMessage?: string;
@@ -30,9 +34,9 @@ export interface PropertyCardProps {
  * a table that is short only because rows are hidden otherwise reads as a
  * property with few units for sale.
  *
- * The hide affordances are dropped rather than disabled when the screen passes no
- * handler, which is how the shortlist renders the same card without a flag saying
- * which screen it is on.
+ * The hide and bookmark affordances are dropped rather than disabled when the screen
+ * passes no handler, which is how the shortlist renders the same card without a flag
+ * saying which screen it is on.
  */
 export default function PropertyCard({
   property,
@@ -41,6 +45,8 @@ export default function PropertyCard({
   hiddenUnitIds,
   onHideProperty,
   onHideUnit,
+  isBookmarked,
+  onToggleBookmark,
   caption,
   emptyMessage,
 }: PropertyCardProps) {
@@ -73,6 +79,19 @@ export default function PropertyCard({
               <ExternalLink size={16} />
               View project
             </a>
+          )}
+          {onToggleBookmark && (
+            <Button
+              variant='outline'
+              size='sm'
+              className={cn(isBookmarked && 'text-cyan')}
+              title={isBookmarked ? 'Remove the bookmark' : 'Pin this property to the top'}
+              aria-pressed={isBookmarked}
+              onClick={() => onToggleBookmark(property)}
+            >
+              <Bookmark size={16} fill={isBookmarked ? 'currentColor' : 'none'} />
+              {isBookmarked ? 'Bookmarked' : 'Bookmark'}
+            </Button>
           )}
           {onHideProperty && (
             <Button variant='outline' size='sm' onClick={() => onHideProperty(property)}>

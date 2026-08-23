@@ -7,9 +7,10 @@ no rework beyond pointing at this host instead of API Gateway:
     POST   /listings/search           -> 202 {jobId}, runs the scrape in the background
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
     GET    /listings/saved-searches   -> the searches kept for re-running
-    POST   /listings/saved-searches   -> save one, with the items it hides
-    PUT    /listings/saved-searches/{id} -> replace its name, request and hidden items
+    POST   /listings/saved-searches   -> save one, with the items it hides and pins
+    PUT    /listings/saved-searches/{id} -> replace its name, request, hidden and pinned
     PUT    /listings/saved-searches/{id}/hidden -> replace its hidden items alone
+    PUT    /listings/saved-searches/{id}/bookmarked -> replace its bookmarks alone
     DELETE /listings/saved-searches/{id} -> forget one
     GET    /listings/shortlist        -> the shortlisted units, grouped by property
     POST   /listings/shortlist        -> shortlist one unit, snapshot and all
@@ -180,9 +181,11 @@ async def create_saved_search(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON in request body")
 
     try:
-        name, source, max_pages, filters, hidden = validation.clean_saved_search(body)
+        name, source, max_pages, filters, hidden, bookmarked = validation.clean_saved_search(
+            body
+        )
         return store.put_saved_search(
-            str(uuid.uuid4()), name, source, max_pages, filters, hidden
+            str(uuid.uuid4()), name, source, max_pages, filters, hidden, bookmarked
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -190,7 +193,7 @@ async def create_saved_search(request: Request):
 
 @app.put("/listings/saved-searches/{search_id}")
 async def update_saved_search(search_id: str, request: Request):
-    """Replace one saved search's name, filters and hidden items."""
+    """Replace one saved search's name, filters, hidden items and bookmarks."""
     try:
         body = await request.json()
     except Exception:
@@ -198,11 +201,15 @@ async def update_saved_search(search_id: str, request: Request):
 
     try:
         validation.clean_search_id(search_id)
-        name, source, max_pages, filters, hidden = validation.clean_saved_search(body)
+        name, source, max_pages, filters, hidden, bookmarked = validation.clean_saved_search(
+            body
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    search = store.update_saved_search(search_id, name, source, max_pages, filters, hidden)
+    search = store.update_saved_search(
+        search_id, name, source, max_pages, filters, hidden, bookmarked
+    )
     if search is None:
         raise HTTPException(status_code=404, detail="That saved search no longer exists")
     return search
@@ -223,6 +230,26 @@ async def update_saved_search_hidden(search_id: str, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
     search = store.set_saved_search_hidden(search_id, hidden)
+    if search is None:
+        raise HTTPException(status_code=404, detail="That saved search no longer exists")
+    return search
+
+
+@app.put("/listings/saved-searches/{search_id}/bookmarked")
+async def update_saved_search_bookmarked(search_id: str, request: Request):
+    """Replace one saved search's bookmarked properties, leaving its filters alone."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        validation.clean_search_id(search_id)
+        bookmarked = validation.clean_bookmarked_update(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    search = store.set_saved_search_bookmarked(search_id, bookmarked)
     if search is None:
         raise HTTPException(status_code=404, detail="That saved search no longer exists")
     return search

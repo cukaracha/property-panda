@@ -19,7 +19,12 @@ import {
   listSavedSearches,
   updateSavedSearch,
 } from '../../../services/listingsService';
-import type { HiddenEntity, SavedSearch, SearchRequest } from '../../../types/listings';
+import type {
+  BookmarkedEntity,
+  HiddenEntity,
+  SavedSearch,
+  SearchRequest,
+} from '../../../types/listings';
 
 export interface SavedSearchesResult {
   savedSearches: SavedSearch[];
@@ -28,13 +33,15 @@ export interface SavedSearchesResult {
   save: (
     name: string,
     request: SearchRequest,
-    hidden: HiddenEntity[]
+    hidden: HiddenEntity[],
+    bookmarked: BookmarkedEntity[]
   ) => Promise<SavedSearch | null>;
   update: (
     searchId: string,
     name: string,
     request: SearchRequest,
-    hidden: HiddenEntity[]
+    hidden: HiddenEntity[],
+    bookmarked: BookmarkedEntity[]
   ) => Promise<SavedSearch | null>;
   remove: (searchId: string) => Promise<void>;
 }
@@ -69,25 +76,39 @@ export function useSavedSearches(): SavedSearchesResult {
     };
   }, []);
 
-  const save = useCallback(async (name: string, request: SearchRequest, hidden: HiddenEntity[]) => {
-    setError('');
-    try {
-      const saved = await createSavedSearch(name, request, hidden);
-      setSavedSearches(current => [saved, ...current]);
-      return saved;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save the search');
-      return null;
-    }
-  }, []);
+  const save = useCallback(
+    async (
+      name: string,
+      request: SearchRequest,
+      hidden: HiddenEntity[],
+      bookmarked: BookmarkedEntity[]
+    ) => {
+      setError('');
+      try {
+        const saved = await createSavedSearch(name, request, hidden, bookmarked);
+        setSavedSearches(current => [saved, ...current]);
+        return saved;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to save the search');
+        return null;
+      }
+    },
+    []
+  );
 
   // Not optimistic either: the row is replaced with what the server stored, so an
   // edit the server normalised does not read back differently after a reload.
   const update = useCallback(
-    async (searchId: string, name: string, request: SearchRequest, hidden: HiddenEntity[]) => {
+    async (
+      searchId: string,
+      name: string,
+      request: SearchRequest,
+      hidden: HiddenEntity[],
+      bookmarked: BookmarkedEntity[]
+    ) => {
       setError('');
       try {
-        const saved = await updateSavedSearch(searchId, name, request, hidden);
+        const saved = await updateSavedSearch(searchId, name, request, hidden, bookmarked);
         setSavedSearches(current =>
           current.map(search => (search.searchId === searchId ? saved : search))
         );

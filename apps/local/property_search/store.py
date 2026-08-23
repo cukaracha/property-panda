@@ -212,14 +212,22 @@ def list_saved_searches() -> list:
     with _lock:
         searches = _read(SAVED_SEARCHES_FILE)
     rows = sorted(searches.values(), key=lambda item: item.get("createdAt") or 0, reverse=True)
-    # A row written before hiding moved onto the search has no list of its own.
+    # A row written before hiding or bookmarking moved onto the search has no list of
+    # its own.
     for row in rows:
         row.setdefault("hidden", [])
+        row.setdefault("bookmarked", [])
     return rows
 
 
 def put_saved_search(
-    search_id: str, name: str, source: str, max_pages: int, filters: dict, hidden: list
+    search_id: str,
+    name: str,
+    source: str,
+    max_pages: int,
+    filters: dict,
+    hidden: list,
+    bookmarked: list,
 ) -> dict:
     """Store one search under a fresh id, refusing to grow the list past the cap.
 
@@ -233,6 +241,7 @@ def put_saved_search(
         "maxPages": max_pages,
         "filters": filters,
         "hidden": hidden,
+        "bookmarked": bookmarked,
         "createdAt": int(time.time()),
     }
     with _lock:
@@ -248,7 +257,13 @@ def put_saved_search(
 
 
 def update_saved_search(
-    search_id: str, name: str, source: str, max_pages: int, filters: dict, hidden: list
+    search_id: str,
+    name: str,
+    source: str,
+    max_pages: int,
+    filters: dict,
+    hidden: list,
+    bookmarked: list,
 ) -> dict:
     """Replace one saved search in place, returning None when the id is unknown.
 
@@ -267,6 +282,7 @@ def update_saved_search(
                 "maxPages": max_pages,
                 "filters": filters,
                 "hidden": hidden,
+                "bookmarked": bookmarked,
             }
         )
         searches[search_id] = search
@@ -286,6 +302,23 @@ def set_saved_search_hidden(search_id: str, hidden: list) -> dict:
         if search is None:
             return None
         search["hidden"] = hidden
+        searches[search_id] = search
+        _write(SAVED_SEARCHES_FILE, searches)
+    return search
+
+
+def set_saved_search_bookmarked(search_id: str, bookmarked: list) -> dict:
+    """Replace one saved search's bookmarked list, returning None when the id is unknown.
+
+    The mirror of set_saved_search_hidden, and its own route for the same reason: the
+    results screen writes it on every bookmark and unbookmark.
+    """
+    with _lock:
+        searches = _read(SAVED_SEARCHES_FILE)
+        search = searches.get(search_id)
+        if search is None:
+            return None
+        search["bookmarked"] = bookmarked
         searches[search_id] = search
         _write(SAVED_SEARCHES_FILE, searches)
     return search

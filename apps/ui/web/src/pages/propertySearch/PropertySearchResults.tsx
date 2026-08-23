@@ -12,6 +12,7 @@ import SaveSearchModal from './components/SaveSearchModal';
 import EditSearchModal from './components/EditSearchModal';
 import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
+import { useBookmarkedEntities } from './hooks/useBookmarkedEntities';
 import { useHiddenEntities } from './hooks/useHiddenEntities';
 import { useShortlist } from '../../hooks/useShortlist';
 import { useSearchProgress } from './hooks/useSearchProgress';
@@ -20,6 +21,7 @@ import { useResultsPageContext } from './PageContext';
 import { createSavedSearch, updateSavedSearch } from '../../services/listingsService';
 import { usePropertySearchResultsStore } from '../../store/usePropertySearchStore';
 import type {
+  BookmarkedEntity,
   FilterFormState,
   HiddenEntity,
   ListingRow,
@@ -40,9 +42,13 @@ import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
  * or lands straight back on the results.
  *
  * Hidden properties and units stay in the result set and are filtered at render
- * time, which is what makes a hide reversible. What is hidden belongs to the search
- * rather than to the app: while the search is unsaved it is held with the results,
- * and once it is saved every hide and unhide writes through to the stored search.
+ * time, which is what makes a hide reversible. Bookmarked properties are sorted to
+ * the front of the same set, so a bookmark is as reversible as a hide, and hiding
+ * still wins: a property that is both stays off screen until it is unhidden.
+ *
+ * What is hidden and what is bookmarked belong to the search rather than to the app:
+ * while the search is unsaved they are held with the results, and once it is saved
+ * every toggle writes through to the stored search.
  *
  * The filters behind the results are persisted with them, so this screen can save
  * the search it is showing even after a reload has emptied the filter panel.
@@ -57,6 +63,7 @@ export default function PropertySearchResults() {
   const setResults = usePropertySearchResultsStore(state => state.setResults);
   const linkSavedSearch = usePropertySearchResultsStore(state => state.linkSavedSearch);
   const setHidden = usePropertySearchResultsStore(state => state.setHidden);
+  const setBookmarked = usePropertySearchResultsStore(state => state.setBookmarked);
   const startJob = usePropertySearchResultsStore(state => state.startJob);
   const [showHidden, setShowHidden] = useState(false);
   const [pendingHide, setPendingHide] = useState<PendingHide | null>(null);
@@ -85,6 +92,14 @@ export default function PropertySearchResults() {
   } = useHiddenEntities();
 
   const {
+    bookmarked,
+    bookmarkedPropertyIds,
+    error: bookmarkedError,
+    bookmark,
+    unbookmark,
+  } = useBookmarkedEntities();
+
+  const {
     shortlistedIds,
     error: shortlistError,
     add: addToShortlist,
@@ -99,9 +114,16 @@ export default function PropertySearchResults() {
   const phase = isRunning ? 'running' : isFailed ? 'failed' : 'ready';
 
   const allProperties = useMemo(() => results?.properties ?? [], [results]);
-  const visibleProperties = allProperties.filter(
-    property => !hiddenPropertyIds.has(property.propertyId)
-  );
+  // Bookmarks sort rather than filter, and they sort after hiding, so a property that
+  // is both stays off screen. Each half keeps the order the scrape returned it in, so
+  // pinning a card moves it to the front without reshuffling anything around it.
+  const visibleProperties = useMemo(() => {
+    const shown = allProperties.filter(property => !hiddenPropertyIds.has(property.propertyId));
+    return [
+      ...shown.filter(property => bookmarkedPropertyIds.has(property.propertyId)),
+      ...shown.filter(property => !bookmarkedPropertyIds.has(property.propertyId)),
+    ];
+  }, [allProperties, hiddenPropertyIds, bookmarkedPropertyIds]);
   const expired = Boolean(results?.expired);
 
   // What the panel and the count show: a search keeps hiding something a later run
@@ -110,6 +132,11 @@ export default function PropertySearchResults() {
     const keys = resultEntityKeys(allProperties);
     return hidden.filter(entity => keys.has(entity.entityKey));
   }, [hidden, allProperties]);
+
+  const bookmarkedInResults = useMemo(() => {
+    const keys = resultEntityKeys(allProperties);
+    return bookmarked.filter(entity => keys.has(entity.entityKey));
+  }, [bookmarked, allProperties]);
 
   // Handing the finished payload to the store also clears the job id, which stops
   // the poller and swaps the progress card for the cards it produced.
@@ -179,6 +206,23 @@ export default function PropertySearchResults() {
     }
   };
 
+  // No confirmation either way: a bookmark takes nothing off screen and nothing is
+  // thrown away by removing one, so it is a toggle like the heart rather than a hide.
+  const toggleBookmark = (property: Property) => {
+    if (bookmarkedPropertyIds.has(property.propertyId)) {
+      unbookmark(`property#${property.propertyId}`);
+      return;
+    }
+    bookmark(property.propertyId, property.name);
+  };
+
+  const bookmarkPropertyById = (propertyId: string) => {
+    const property = allProperties.find(item => item.propertyId === propertyId);
+    if (property) bookmark(property.propertyId, property.name);
+  };
+
+  const removeBookmarkById = (propertyId: string) => unbookmark(`property#${propertyId}`);
+
   const backToSearch = () => navigate('/properties');
 
   // The request is rebuilt from the snapshot rather than stored alongside it, so a
@@ -189,7 +233,12 @@ export default function PropertySearchResults() {
     if (!searchForm) return;
     setIsSavingSearch(true);
     try {
-      const saved = await createSavedSearch(name, buildSearchRequest(searchForm), hidden);
+      const saved = await createSavedSearch(
+        name,
+        buildSearchRequest(searchForm),
+        hidden,
+        bookmarked
+      );
       linkSavedSearch(saved.searchId, saved.name);
       setIsNamingSearch(false);
       addToast('success', `Saved "${name}" to your searches.`);
@@ -205,17 +254,26 @@ export default function PropertySearchResults() {
   const saveAndRerun = async (
     name: string,
     edited: FilterFormState,
-    editedHidden: HiddenEntity[]
+    editedHidden: HiddenEntity[],
+    editedBookmarked: BookmarkedEntity[]
   ) => {
     if (!savedSearchId) return;
     setIsSavingSearch(true);
     const request = buildSearchRequest(edited);
     try {
-      const saved = await updateSavedSearch(savedSearchId, name, request, editedHidden);
-      // The row is stored either way, so the screen takes the new name and hidden
-      // list before the scrape, and still matches the file if the scrape never starts.
+      const saved = await updateSavedSearch(
+        savedSearchId,
+        name,
+        request,
+        editedHidden,
+        editedBookmarked
+      );
+      // The row is stored either way, so the screen takes the new name, hidden list
+      // and bookmarks before the scrape, and still matches the file if the scrape
+      // never starts.
       linkSavedSearch(saved.searchId, saved.name);
       setHidden(saved.hidden);
+      setBookmarked(saved.bookmarked);
       const newJobId = await startSearch(request);
       if (!newJobId) {
         addToast('error', 'Saved, but the search could not be started.');
@@ -226,6 +284,7 @@ export default function PropertySearchResults() {
         searchId: saved.searchId,
         name: saved.name,
         hidden: saved.hidden,
+        bookmarked: saved.bookmarked,
       });
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Failed to update the saved search');
@@ -244,6 +303,8 @@ export default function PropertySearchResults() {
       properties: visibleProperties,
       hiddenUnitIds,
       hidden: hiddenInResults,
+      bookmarked: bookmarkedInResults,
+      bookmarkedPropertyIds,
       shortlistedIds,
       showHidden,
       expired,
@@ -254,6 +315,8 @@ export default function PropertySearchResults() {
       onHideProperty: hidePropertyById,
       onHideUnit: hideUnitById,
       onUnhide: unhide,
+      onBookmarkProperty: bookmarkPropertyById,
+      onRemoveBookmark: removeBookmarkById,
       onShortlistUnit: shortlistUnitById,
       onRemoveFromShortlist: removeFromShortlist,
       onBackToSearch: backToSearch,
@@ -345,6 +408,7 @@ export default function PropertySearchResults() {
             </p>
 
             {shortlistError && <p className='text-sm text-rose'>{shortlistError}</p>}
+            {bookmarkedError && <p className='text-sm text-rose'>{bookmarkedError}</p>}
 
             {results?.truncated && (
               <p className='type-ui-sm text-ink-3'>
@@ -378,6 +442,8 @@ export default function PropertySearchResults() {
                   hiddenUnitIds={hiddenUnitIds}
                   onHideProperty={property => setPendingHide({ scope: 'property', property })}
                   onHideUnit={(property, row) => setPendingHide({ scope: 'unit', property, row })}
+                  isBookmarked={bookmarkedPropertyIds.has(property.propertyId)}
+                  onToggleBookmark={toggleBookmark}
                 />
               ))
             )}
@@ -411,6 +477,7 @@ export default function PropertySearchResults() {
           name={savedSearchName}
           form={searchForm}
           hidden={hidden}
+          bookmarked={bookmarked}
           confirmLabel='Save and rerun'
           isSaving={isSavingSearch}
           onClose={() => setIsEditingSearch(false)}
