@@ -110,6 +110,7 @@ def _build_unit(listing: dict) -> dict:
         "listedLabel": listing.get("listedLabel") or "",
         "agentName": listing.get("agentName") or "",
         "agencyName": listing.get("agencyName") or "",
+        "floorplans": listing.get("floorplans") or [],
     }
 
 

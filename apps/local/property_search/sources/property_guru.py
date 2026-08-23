@@ -16,7 +16,12 @@ Search results page
                                    sqft), url, fullAddress, postedOn{text,unix},
                                    pricePerArea, localizedTitle, agent{name}, agency{name},
                                    property{id} (the project id), products{} (what the
-                                   agent paid for, plus the ad markers)
+                                   agent paid for, plus the ad markers),
+                                   mediaCarousel.previewMedia.floorPlans.items[]{caption,src}
+                                   -- the listing's own floorplan images, already on the
+                                   search page, so no project-page fetch is needed for them.
+                                   `caption` repeats one SEO string across every item in a
+                                   listing, so it cannot tell two plans apart and is dropped.
         [].segment.parameters.metaData.listingData
                                 -> district, districtName, regionName, tenure, projectId,
                                    propertyType, property{developerName}, adProduct
@@ -223,6 +228,8 @@ class PropertyGuruSource:
 
         project_id = (listing.get("property") or {}).get("id") or meta.get("projectId")
         posted = listing.get("postedOn") or {}
+        media = (listing.get("mediaCarousel") or {}).get("previewMedia") or {}
+        plans = (media.get("floorPlans") or {}).get("items") or []
 
         return {
             "listingId": int(listing_id),
@@ -241,6 +248,8 @@ class PropertyGuruSource:
             "listedLabel": posted.get("text") or "",
             "agentName": (listing.get("agent") or {}).get("name") or "",
             "agencyName": (listing.get("agency") or {}).get("name") or "",
+            # Only the src: see the module docstring on why `caption` is useless here.
+            "floorplans": [plan.get("src") for plan in plans if plan.get("src")],
             "district": meta.get("district") or "",
             "districtName": meta.get("districtName") or "",
             "regionName": meta.get("regionName") or "",

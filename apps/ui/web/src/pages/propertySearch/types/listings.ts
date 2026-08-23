@@ -52,6 +52,11 @@ export interface Unit {
   listedLabel: string | null;
   agentName: string | null;
   agencyName: string | null;
+  /**
+   * The listing's own floorplan images, newest scrape onwards. Results cached before
+   * the scraper started keeping them have no key at all, so read it defensively.
+   */
+  floorplans?: string[];
 }
 
 export interface UnitType {

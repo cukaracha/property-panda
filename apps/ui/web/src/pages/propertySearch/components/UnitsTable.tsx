@@ -1,6 +1,8 @@
-import { EyeOff } from 'lucide-react';
+import { useState } from 'react';
+import { EyeOff, Ruler } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import DataTable, { type Column } from '../../../components/tables/DataTable';
+import FloorplanModal from './FloorplanModal';
 import type { ListingRow } from '../types/listings';
 import { formatCurrency, formatNumber, formatPsf, formatSqft, formatText } from '../utils/format';
 
@@ -13,10 +15,15 @@ export interface UnitsTableProps {
  * Dense listings table for one property: every unit it has, across every bedroom
  * count, in one place. Square corners rather than a card radius, since this is
  * data UI. The row itself opens the listing in a new tab, so the actions cell
- * carries only the hide button. Hiding a row is reversible: it drops out of the
- * render, but the result set keeps it.
+ * carries the buttons that must not do that. Hiding a row is reversible: it drops
+ * out of the render, but the result set keeps it.
+ *
+ * The floorplan viewer is held here rather than lifted, because looking at one
+ * touches no store and needs nothing the row does not already carry.
  */
 export default function UnitsTable({ rows, onHideUnit }: UnitsTableProps) {
+  const [floorplanRow, setFloorplanRow] = useState<ListingRow | null>(null);
+
   const openListing = (row: ListingRow) => {
     if (!row.url) return;
     window.open(row.url, '_blank', 'noopener,noreferrer');
@@ -41,18 +48,33 @@ export default function UnitsTable({ rows, onHideUnit }: UnitsTableProps) {
         onRowClick={openListing}
         rowLabel={row => `Open listing ${row.listingId}`}
         actions={row => (
-          <Button
-            variant='ghost'
-            size='icon'
-            className='btn-sm'
-            title='Hide this unit'
-            aria-label={`Hide unit ${row.listingId}`}
-            onClick={() => onHideUnit(row)}
-          >
-            <EyeOff size={16} />
-          </Button>
+          <>
+            {(row.floorplans?.length ?? 0) > 0 && (
+              <Button
+                variant='ghost'
+                size='icon'
+                className='btn-sm'
+                title='View floorplan'
+                aria-label={`View floorplan for unit ${row.listingId}`}
+                onClick={() => setFloorplanRow(row)}
+              >
+                <Ruler size={16} />
+              </Button>
+            )}
+            <Button
+              variant='ghost'
+              size='icon'
+              className='btn-sm'
+              title='Hide this unit'
+              aria-label={`Hide unit ${row.listingId}`}
+              onClick={() => onHideUnit(row)}
+            >
+              <EyeOff size={16} />
+            </Button>
+          </>
         )}
       />
+      <FloorplanModal row={floorplanRow} onClose={() => setFloorplanRow(null)} />
     </div>
   );
 }
