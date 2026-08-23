@@ -9,6 +9,11 @@ Both phases hand their URLs to the session in a batch so its tabs can load them 
 same time. Enrichment is where that matters: it is one page load per distinct property
 and it dominates a cold run, while the search itself is only ever a handful of pages.
 
+Both phases end in a filter check. The source's query is what does the real filtering, so
+this only catches what came back contradicting it -- a bound the site quietly ignored, or
+a card that was never a search hit in the first place. Silently keeping those reads as a
+broad search rather than as a bug, which is why the check is here at all.
+
 Status moves queued -> scraping -> enriching -> succeeded, or -> failed.
 
 Enrichment is best effort by design: a project page that will not load leaves that
@@ -27,6 +32,13 @@ MAX_PAGES_CEILING = 10
 
 # A failure's debuggable detail rides on the job row so it reaches the UI.
 DETAIL_MAX_CHARS = 4000
+
+# (min filter, max filter, listing field) for every bound `keep_matching_listings` checks.
+_RANGE_CHECKS = (
+    ("minPrice", "maxPrice", "price"),
+    ("minSize", "maxSize", "floorAreaSqft"),
+    ("minPsf", "maxPsf", "psf"),
+)
 
 _SOURCES = {PropertyGuruSource.name: PropertyGuruSource}
 
@@ -99,6 +111,72 @@ def _collect(page_listings, listings, seen):
             listings.append(listing)
 
 
+def keep_matching_listings(listings: list, filters: dict) -> list:
+    """Drop the listings that contradict the filters the search was run with.
+
+    The site's own query does the real filtering; this only re-checks it. A filter the
+    site does not recognise is dropped in silence, and the result then reads as a very
+    broad search rather than as a bug -- which is the failure this catches.
+
+    Only the filters that can be checked exactly are here. Bedrooms and bathrooms are
+    not: the panel's top option means "or more", so an exact match would drop legitimate
+    hits. Neither is lastPosted, whose day boundary is the site's to define, not ours.
+    """
+    kept = [listing for listing in listings if _listing_matches(listing, filters)]
+    dropped = len(listings) - len(kept)
+    if dropped:
+        print(f"Filter check dropped {dropped} of {len(listings)} listings")
+    return kept
+
+
+def _listing_matches(listing: dict, filters: dict) -> bool:
+    """False when one of the exactly checkable filters rules this listing out."""
+    for low, high, field in _RANGE_CHECKS:
+        value = listing.get(field)
+        # An absent value contradicts nothing, so it is kept rather than guessed at.
+        if value is None:
+            continue
+        if filters.get(low) is not None and value < filters[low]:
+            return False
+        if filters.get(high) is not None and value > filters[high]:
+            return False
+
+    districts = filters.get("districtCode")
+    if districts and listing.get("district") and listing["district"] not in districts:
+        return False
+    return True
+
+
+def keep_matching_properties(properties: list, filters: dict) -> list:
+    """Drop the properties whose TOP year falls outside the search's TOP range.
+
+    Property level rather than listing level because TOP is a fact about the project, and
+    it only exists once enrichment has read the project page. A property whose page would
+    not load has no TOP year at all, and it goes too: under a TOP filter, "we could not
+    tell" is not a match.
+    """
+    low, high = filters.get("minTop"), filters.get("maxTop")
+    if low is None and high is None:
+        return properties
+
+    kept = [
+        prop
+        for prop in properties
+        if _in_range(prop["info"].get("topYear"), low, high)
+    ]
+    dropped = len(properties) - len(kept)
+    if dropped:
+        print(f"TOP year check dropped {dropped} of {len(properties)} properties")
+    return kept
+
+
+def _in_range(value, low, high) -> bool:
+    """True when value sits inside the bounds that are set. An unknown value never does."""
+    if value is None:
+        return False
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
 def enrich_properties(session, source, listings):
     """Fetch each uncached project page once, returning propertyId -> project record."""
     by_id = {}
@@ -164,12 +242,17 @@ def run_job(job: dict) -> dict:
         listings, pages_scanned, total_pages, truncated = scrape_search_pages(
             session, source, filters, max_pages
         )
+        # Before enrichment, so a listing that never belonged here does not cost a page
+        # load on the way out.
+        listings = keep_matching_listings(listings, filters)
         print(f"Scraped {len(listings)} distinct listings over {pages_scanned} page(s)")
 
         store.update_status(job_id, "enriching", listingCount=len(listings))
         properties_cache = enrich_properties(session, source, listings)
 
-    properties = grouping.group_listings(listings, properties_cache)
+    properties = keep_matching_properties(
+        grouping.group_listings(listings, properties_cache), filters
+    )
     return {
         "source": source.name,
         "properties": properties,

@@ -8,14 +8,18 @@ Search results page
     Data lives in the `__NEXT_DATA__` script tag, NOT in the `{"productData":` blobs the
     original Streamlit prototype split on -- that marker no longer appears in the markup
     at all, which is why the old parser returns nothing today.
-      props.pageProps.pageData.data.listingsData[]  -- 25 cards per page
+      props.pageProps.pageData.data.listingsData[]  -- 25 cards per page, of which only
+                                   20 are search hits: the other 5 are ad slots sold by
+                                   position (observed at 2, 7, 13, 19 and 25). See
+                                   `_is_promoted_ad`.
         [].listingData          -> id, price{value}, bedrooms, bathrooms, floorArea (int
                                    sqft), url, fullAddress, postedOn{text,unix},
                                    pricePerArea, localizedTitle, agent{name}, agency{name},
-                                   property{id} (the project id)
+                                   property{id} (the project id), products{} (what the
+                                   agent paid for, plus the ad markers)
         [].segment.parameters.metaData.listingData
                                 -> district, districtName, regionName, tenure, projectId,
-                                   propertyType, property{developerName}
+                                   propertyType, property{developerName}, adProduct
       props.pageProps.pageData.data.paginationData.totalPages -- lets the worker stop early
     Note `listingData.developer` holds the *agent's* name, not the developer. The real
     developer is property.developerName on the segment metadata. Do not swap these.
@@ -119,7 +123,7 @@ class PropertyGuruSource:
         return f"{BASE_URL}/property-for-sale/{page}?{urlencode(params)}"
 
     def parse_listings(self, html: str) -> list:
-        """Return one normalised record per listing card on a search-results page."""
+        """Return one normalised record per organic listing card on a search-results page."""
         data = self._next_data(html)
         if not data:
             return []
@@ -135,6 +139,8 @@ class PropertyGuruSource:
 
         listings = []
         for card in cards:
+            if self._is_promoted_ad(card):
+                continue
             try:
                 record = self._parse_card(card)
             except Exception as e:
@@ -163,6 +169,38 @@ class PropertyGuruSource:
             return int(pagination.get("totalPages") or 0)
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _is_promoted_ad(card: dict) -> bool:
+        """True for an ad slot the ad server injected into the results grid.
+
+        These are not search hits. They are sold by position, so they ignore the query's
+        filters completely: a "TOP from 2020" search comes back with a 2001 project in
+        one, a "1300 sqft and up" search with an 1184 sqft unit, and the same listing
+        reappears across searches that share no filters at all. Left in, they read as the
+        filter being broken, because from the page they are indistinguishable from a hit.
+
+        Three markers pick out exactly the same cards -- the ad server's own tracking
+        payload, the promoted flag, and the analytics ad product -- and any one is enough,
+        so renaming one on the site's side cannot quietly let the ads back in.
+
+        NOT `products.isPromotedListing`, despite the name: that one is also true for a
+        Turbo listing that matched the search on its own merits, and dropping those would
+        lose real results.
+        """
+        products = (card.get("listingData") or {}).get("products") or {}
+        meta = (
+            card.get("segment", {})
+            .get("parameters", {})
+            .get("metaData", {})
+            .get("listingData")
+            or {}
+        )
+        return (
+            "kevel" in card
+            or products.get("isPromoted") is True
+            or meta.get("adProduct") == "promoted"
+        )
 
     def _parse_card(self, card: dict) -> dict:
         """Flatten one listingsData entry, or return {} when it is not a usable listing."""
