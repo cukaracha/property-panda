@@ -1,24 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, BookmarkPlus, Eye, EyeOff, Pencil } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import Toast, { type ToastItem } from '../../components/ui/toast';
 import PropertyCard from './components/PropertyCard';
 import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
+import SaveSearchModal from './components/SaveSearchModal';
+import EditSearchModal from './components/EditSearchModal';
 import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
 import { useHiddenEntities } from './hooks/useHiddenEntities';
 import { useSearchProgress } from './hooks/useSearchProgress';
+import { useStartSearch } from './hooks/useStartSearch';
 import { useResultsPageContext } from './PageContext';
-import {
-  usePropertySearchResultsStore,
-  usePropertySearchStore,
-} from '../../store/usePropertySearchStore';
-import type { ListingRow, PendingHide, Property } from './types/listings';
-import { describeFilters } from './utils/filterOptions';
+import { createSavedSearch, updateSavedSearch } from '../../services/listingsService';
+import { usePropertySearchResultsStore } from '../../store/usePropertySearchStore';
+import type {
+  FilterFormState,
+  HiddenEntity,
+  ListingRow,
+  PendingHide,
+  Property,
+} from './types/listings';
+import { buildSearchRequest, describeFilters } from './utils/filterOptions';
 import { formatCurrency } from './utils/format';
-import { toListingRows } from './utils/rows';
+import { resultEntityKeys, toListingRows } from './utils/rows';
 
 /**
  * Search results - the scrape while it runs, then the properties it returned.
@@ -29,25 +37,44 @@ import { toListingRows } from './utils/rows';
  * or lands straight back on the results.
  *
  * Hidden properties and units stay in the result set and are filtered at render
- * time, which is what makes a hide reversible.
+ * time, which is what makes a hide reversible. What is hidden belongs to the search
+ * rather than to the app: while the search is unsaved it is held with the results,
+ * and once it is saved every hide and unhide writes through to the stored search.
+ *
+ * The filters behind the results are persisted with them, so this screen can save
+ * the search it is showing even after a reload has emptied the filter panel.
  */
 export default function PropertySearchResults() {
   const navigate = useNavigate();
   const jobId = usePropertySearchResultsStore(state => state.jobId);
   const results = usePropertySearchResultsStore(state => state.results);
-  const filtersOnRecord = usePropertySearchResultsStore(state => state.filtersOnRecord);
+  const searchForm = usePropertySearchResultsStore(state => state.searchForm);
+  const savedSearchId = usePropertySearchResultsStore(state => state.savedSearchId);
+  const savedSearchName = usePropertySearchResultsStore(state => state.savedSearchName);
   const setResults = usePropertySearchResultsStore(state => state.setResults);
-  const form = usePropertySearchStore(state => state.form);
+  const linkSavedSearch = usePropertySearchResultsStore(state => state.linkSavedSearch);
+  const setHidden = usePropertySearchResultsStore(state => state.setHidden);
+  const startJob = usePropertySearchResultsStore(state => state.startJob);
   const [showHidden, setShowHidden] = useState(false);
   const [pendingHide, setPendingHide] = useState<PendingHide | null>(null);
+  const [isNamingSearch, setIsNamingSearch] = useState(false);
+  const [isEditingSearch, setIsEditingSearch] = useState(false);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = useCallback((type: ToastItem['type'], message: string) => {
+    const id = Date.now();
+    setToasts(current => [...current, { id, type, message }]);
+    setTimeout(() => setToasts(current => current.filter(toast => toast.id !== id)), 5000);
+  }, []);
 
   const { status, error: pollError } = useSearchProgress(jobId);
+  const { startSearch } = useStartSearch();
 
   const {
     hidden,
     hiddenPropertyIds,
     hiddenUnitIds,
-    isLoading: isLoadingHidden,
     error: hiddenError,
     hide,
     unhide,
@@ -60,11 +87,18 @@ export default function PropertySearchResults() {
   const isRunning = jobId !== null && !isFailed;
   const phase = isRunning ? 'running' : isFailed ? 'failed' : 'ready';
 
-  const allProperties = results?.properties ?? [];
+  const allProperties = useMemo(() => results?.properties ?? [], [results]);
   const visibleProperties = allProperties.filter(
     property => !hiddenPropertyIds.has(property.propertyId)
   );
   const expired = Boolean(results?.expired);
+
+  // What the panel and the count show: a search keeps hiding something a later run
+  // did not turn up, and listing it here would be listing something not on screen.
+  const hiddenInResults = useMemo(() => {
+    const keys = resultEntityKeys(allProperties);
+    return hidden.filter(entity => keys.has(entity.entityKey));
+  }, [hidden, allProperties]);
 
   // Handing the finished payload to the store also clears the job id, which stops
   // the poller and swaps the progress card for the cards it produced.
@@ -109,18 +143,69 @@ export default function PropertySearchResults() {
 
   const backToSearch = () => navigate('/properties');
 
+  // The request is rebuilt from the snapshot rather than stored alongside it, so a
+  // saved search is byte for byte what a search run from these filters would send.
+  // What the search hides goes with it, and from here on these results are that
+  // saved search, so every later hide writes straight through.
+  const saveSearch = async (name: string) => {
+    if (!searchForm) return;
+    setIsSavingSearch(true);
+    try {
+      const saved = await createSavedSearch(name, buildSearchRequest(searchForm), hidden);
+      linkSavedSearch(saved.searchId, saved.name);
+      setIsNamingSearch(false);
+      addToast('success', `Saved "${name}" to your searches.`);
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Failed to save the search');
+    } finally {
+      setIsSavingSearch(false);
+    }
+  };
+
+  // The write comes first and the scrape only if it succeeded, so a failed save never
+  // opens a browser window for results the stored search would not have matched.
+  const saveAndRerun = async (
+    name: string,
+    edited: FilterFormState,
+    editedHidden: HiddenEntity[]
+  ) => {
+    if (!savedSearchId) return;
+    setIsSavingSearch(true);
+    const request = buildSearchRequest(edited);
+    try {
+      const saved = await updateSavedSearch(savedSearchId, name, request, editedHidden);
+      // The row is stored either way, so the screen takes the new name and hidden
+      // list before the scrape, and still matches the file if the scrape never starts.
+      linkSavedSearch(saved.searchId, saved.name);
+      setHidden(saved.hidden);
+      const newJobId = await startSearch(request);
+      if (!newJobId) {
+        addToast('error', 'Saved, but the search could not be started.');
+        return;
+      }
+      setIsEditingSearch(false);
+      startJob(newJobId, edited, {
+        searchId: saved.searchId,
+        name: saved.name,
+        hidden: saved.hidden,
+      });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Failed to update the saved search');
+    } finally {
+      setIsSavingSearch(false);
+    }
+  };
+
   useResultsPageContext(
     {
       phase,
       status: status?.status ?? null,
       errorMessage,
-      // Only when the search was started in this page load. A reload restores the
-      // results but not the form, so describing what is in the form then would name
-      // filters that had nothing to do with what is on screen.
-      filterSummary: filtersOnRecord ? describeFilters(form) : '',
+      filterSummary: searchForm ? describeFilters(searchForm) : '',
+      savedSearchName,
       properties: visibleProperties,
       hiddenUnitIds,
-      hidden,
+      hidden: hiddenInResults,
       showHidden,
       expired,
       propertyCount: results?.propertyCount ?? 0,
@@ -131,6 +216,7 @@ export default function PropertySearchResults() {
       onHideUnit: hideUnitById,
       onUnhide: unhide,
       onBackToSearch: backToSearch,
+      onSaveSearch: saveSearch,
     }
   );
 
@@ -153,22 +239,38 @@ export default function PropertySearchResults() {
             <h1 className='type-ui-h2 mt-2 text-ink'>
               {isRunning ? 'Searching' : 'Search results'}
             </h1>
+            {savedSearchName && (
+              <p className='type-ui-caption mt-1'>Saved search: {savedSearchName}</p>
+            )}
           </div>
           {phase === 'ready' && (
-            <Button variant='outline' size='sm' onClick={() => setShowHidden(current => !current)}>
-              {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-              {showHidden ? 'Hide the hidden items' : `Show hidden (${hidden.length})`}
-            </Button>
+            <div className='flex flex-wrap items-center gap-2'>
+              {searchForm &&
+                (savedSearchId ? (
+                  <Button variant='outline' size='sm' onClick={() => setIsEditingSearch(true)}>
+                    <Pencil size={16} />
+                    Edit search
+                  </Button>
+                ) : (
+                  <Button variant='outline' size='sm' onClick={() => setIsNamingSearch(true)}>
+                    <BookmarkPlus size={16} />
+                    Save search
+                  </Button>
+                ))}
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => setShowHidden(current => !current)}
+              >
+                {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showHidden ? 'Hide the hidden items' : `Show hidden (${hiddenInResults.length})`}
+              </Button>
+            </div>
           )}
         </div>
 
         {showHidden && phase === 'ready' && (
-          <HiddenPanel
-            hidden={hidden}
-            isLoading={isLoadingHidden}
-            error={hiddenError}
-            onUnhide={unhide}
-          />
+          <HiddenPanel hidden={hiddenInResults} error={hiddenError} onUnhide={unhide} />
         )}
 
         {isRunning ? (
@@ -243,6 +345,36 @@ export default function PropertySearchResults() {
         onClose={() => setPendingHide(null)}
         onConfirm={confirmHide}
       />
+
+      {isNamingSearch && searchForm && (
+        <SaveSearchModal
+          filterSummary={describeFilters(searchForm)}
+          isSaving={isSavingSearch}
+          onClose={() => setIsNamingSearch(false)}
+          onSave={saveSearch}
+        />
+      )}
+
+      {isEditingSearch && searchForm && savedSearchName && (
+        <EditSearchModal
+          name={savedSearchName}
+          form={searchForm}
+          hidden={hidden}
+          confirmLabel='Save and rerun'
+          isSaving={isSavingSearch}
+          onClose={() => setIsEditingSearch(false)}
+          onSave={saveAndRerun}
+        />
+      )}
+
+      {toasts.map((toast, index) => (
+        <Toast
+          key={toast.id}
+          toast={toast}
+          index={index}
+          onRemove={() => setToasts(current => current.filter(item => item.id !== toast.id))}
+        />
+      ))}
     </>
   );
 }

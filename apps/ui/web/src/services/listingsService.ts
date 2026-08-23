@@ -8,14 +8,17 @@
  * getSearchResults is both the poll and the fetch, and its `properties` array
  * is only populated once status is 'succeeded'.
  *
- * Hidden properties and units are a separate, reversible server-side list. The
- * page applies it at render time over the full result set, so unhiding puts a
+ * Saved searches are the request bodies themselves, kept so a set of filters worth
+ * running twice does not have to be retyped. Each one carries the properties and
+ * units it hides, because hiding belongs to the search that turned them up: the
+ * page keeps the full result set and filters at render time, so unhiding puts a
  * row straight back without re-running the scrape.
  */
 import type {
-  HiddenMutationResponse,
-  HiddenScope,
-  ListHiddenResponse,
+  HiddenEntity,
+  ListSavedSearchesResponse,
+  MutationResponse,
+  SavedSearch,
   SearchRequest,
   SearchResultsResponse,
   SearchStatus,
@@ -68,36 +71,79 @@ export async function getSearchResults(jobId: string): Promise<SearchResultsResp
   return data;
 }
 
-/** List every property and unit the user has hidden. */
-export async function listHidden(): Promise<ListHiddenResponse> {
-  const response = await fetch(`${API_URL}/listings/hidden`);
-  const data = await readBody<ListHiddenResponse>(response);
-  if (!response.ok || !data) throw new Error(data?.message || 'Failed to load hidden items');
+/** List every saved search, newest first. */
+export async function listSavedSearches(): Promise<ListSavedSearchesResponse> {
+  const response = await fetch(`${API_URL}/listings/saved-searches`);
+  const data = await readBody<ListSavedSearchesResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to load saved searches');
   return data;
 }
 
-/** Hide a property or a single unit. The label is kept for the hidden panel. */
-export async function hideEntity(
-  scope: HiddenScope,
-  id: string,
-  label: string
-): Promise<HiddenMutationResponse> {
-  const response = await fetch(`${API_URL}/listings/hidden`, {
+/** Save one search under a name. The server mints the id, so names may repeat. */
+export async function createSavedSearch(
+  name: string,
+  request: SearchRequest,
+  hidden: HiddenEntity[]
+): Promise<SavedSearch> {
+  const response = await fetch(`${API_URL}/listings/saved-searches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scope, id, label }),
+    body: JSON.stringify({ name, request, hidden }),
   });
-  const data = await readBody<HiddenMutationResponse>(response);
-  if (!response.ok || !data) throw new Error(data?.message || 'Failed to hide the item');
+  const data = await readBody<SavedSearch>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to save the search');
   return data;
 }
 
-/** Unhide by entity key (`property#<id>` or `unit#<id>`). */
-export async function unhideEntity(entityKey: string): Promise<HiddenMutationResponse> {
-  const response = await fetch(`${API_URL}/listings/hidden/${encodeURIComponent(entityKey)}`, {
-    method: 'DELETE',
-  });
-  const data = await readBody<HiddenMutationResponse>(response);
-  if (!response.ok || !data) throw new Error(data?.message || 'Failed to unhide the item');
+/** Replace one saved search's name, request and hidden items. */
+export async function updateSavedSearch(
+  searchId: string,
+  name: string,
+  request: SearchRequest,
+  hidden: HiddenEntity[]
+): Promise<SavedSearch> {
+  const response = await fetch(
+    `${API_URL}/listings/saved-searches/${encodeURIComponent(searchId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, request, hidden }),
+    }
+  );
+  const data = await readBody<SavedSearch>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to update the saved search');
+  return data;
+}
+
+/**
+ * Replace one saved search's hidden items, leaving its filters alone. Its own call
+ * because the results screen writes it on every hide and unhide, where resending the
+ * filters would mean the screen deciding what they are.
+ */
+export async function updateSavedSearchHidden(
+  searchId: string,
+  hidden: HiddenEntity[]
+): Promise<SavedSearch> {
+  const response = await fetch(
+    `${API_URL}/listings/saved-searches/${encodeURIComponent(searchId)}/hidden`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden }),
+    }
+  );
+  const data = await readBody<SavedSearch>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to update the hidden items');
+  return data;
+}
+
+/** Forget one saved search by id. */
+export async function deleteSavedSearch(searchId: string): Promise<MutationResponse> {
+  const response = await fetch(
+    `${API_URL}/listings/saved-searches/${encodeURIComponent(searchId)}`,
+    { method: 'DELETE' }
+  );
+  const data = await readBody<MutationResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to delete the saved search');
   return data;
 }

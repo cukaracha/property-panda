@@ -1,6 +1,6 @@
 """
-Persistence for the local scraper: the job rows, the property cache, the hidden list and
-the result JSON.
+Persistence for the local scraper: the job rows, the property cache, the saved searches
+and the result JSON.
 
 Everything lives in JSON files under `.data/` next to this module. The cloud version of
 this scraper used DynamoDB for the rows and S3 for the results; running on one machine
@@ -26,7 +26,7 @@ RESULTS_DIR = os.path.join(DATA_DIR, "results")
 
 JOBS_FILE = os.path.join(DATA_DIR, "jobs.json")
 PROPERTIES_FILE = os.path.join(DATA_DIR, "properties.json")
-HIDDEN_FILE = os.path.join(DATA_DIR, "hidden.json")
+SAVED_SEARCHES_FILE = os.path.join(DATA_DIR, "saved_searches.json")
 
 PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 3600)))
 # A project page that would not load is remembered too, but only briefly: the usual
@@ -35,6 +35,9 @@ PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 
 PROPERTY_FAIL_TTL_SECONDS = int(os.environ.get("PROPERTY_FAIL_TTL_SECONDS", str(24 * 3600)))
 # Jobs are kept only so a reload of the page can still poll the run that is in flight.
 JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_SECONDS", str(24 * 3600)))
+# Saved searches never expire, so the list is capped instead. Well past what one
+# person keeps, and low enough that the file stays something you can read by hand.
+MAX_SAVED_SEARCHES = 50
 
 _lock = threading.Lock()
 
@@ -198,48 +201,96 @@ def put_property_cache(records: dict, failed=()):
         _write(PROPERTIES_FILE, cache)
 
 
-# ---------------------------------------------------------------------- hidden
+# --------------------------------------------------------------- saved searches
 
 
-def list_hidden() -> list:
-    """Every hidden entity, newest first."""
+def list_saved_searches() -> list:
+    """Every saved search, newest first."""
     with _lock:
-        hidden = _read(HIDDEN_FILE)
-    return sorted(hidden.values(), key=lambda item: item.get("createdAt") or 0, reverse=True)
+        searches = _read(SAVED_SEARCHES_FILE)
+    rows = sorted(searches.values(), key=lambda item: item.get("createdAt") or 0, reverse=True)
+    # A row written before hiding moved onto the search has no list of its own.
+    for row in rows:
+        row.setdefault("hidden", [])
+    return rows
 
 
-def put_hidden(scope: str, entity_id: str, label: str) -> dict:
-    """Hide a property or unit. Rewriting an existing key is a no-op re-hide."""
-    entity_key = f"{scope}#{entity_id}"
-    entity = {
-        "entityKey": entity_key,
-        "scope": scope,
-        "id": entity_id,
-        "label": label,
+def put_saved_search(
+    search_id: str, name: str, source: str, max_pages: int, filters: dict, hidden: list
+) -> dict:
+    """Store one search under a fresh id, refusing to grow the list past the cap.
+
+    The cap raises rather than evicting the oldest, because a saved search is something
+    the user typed and only the user should decide which one goes.
+    """
+    search = {
+        "searchId": search_id,
+        "name": name,
+        "source": source,
+        "maxPages": max_pages,
+        "filters": filters,
+        "hidden": hidden,
         "createdAt": int(time.time()),
     }
     with _lock:
-        hidden = _read(HIDDEN_FILE)
-        hidden[entity_key] = entity
-        _write(HIDDEN_FILE, hidden)
-    return entity
+        searches = _read(SAVED_SEARCHES_FILE)
+        if search_id not in searches and len(searches) >= MAX_SAVED_SEARCHES:
+            raise ValueError(
+                f"You already have {MAX_SAVED_SEARCHES} saved searches. "
+                "Delete one before saving another."
+            )
+        searches[search_id] = search
+        _write(SAVED_SEARCHES_FILE, searches)
+    return search
 
 
-def delete_hidden(entity_key: str):
-    """Unhide by key. Deleting a key that is already gone counts as success."""
+def update_saved_search(
+    search_id: str, name: str, source: str, max_pages: int, filters: dict, hidden: list
+) -> dict:
+    """Replace one saved search in place, returning None when the id is unknown.
+
+    createdAt is kept, so editing a search does not jump it to the top of the list the
+    user has learned the order of.
+    """
     with _lock:
-        hidden = _read(HIDDEN_FILE)
-        if hidden.pop(entity_key, None) is not None:
-            _write(HIDDEN_FILE, hidden)
+        searches = _read(SAVED_SEARCHES_FILE)
+        search = searches.get(search_id)
+        if search is None:
+            return None
+        search.update(
+            {
+                "name": name,
+                "source": source,
+                "maxPages": max_pages,
+                "filters": filters,
+                "hidden": hidden,
+            }
+        )
+        searches[search_id] = search
+        _write(SAVED_SEARCHES_FILE, searches)
+    return search
 
 
-def hidden_id_sets() -> tuple:
-    """Return (hidden property ids, hidden unit ids) as sets of strings."""
-    properties = set()
-    units = set()
-    for entity in list_hidden():
-        if entity.get("scope") == "property":
-            properties.add(str(entity.get("id")))
-        elif entity.get("scope") == "unit":
-            units.add(str(entity.get("id")))
-    return properties, units
+def set_saved_search_hidden(search_id: str, hidden: list) -> dict:
+    """Replace one saved search's hidden list, returning None when the id is unknown.
+
+    Its own route because the results screen writes it on every hide and unhide, where
+    resending the filters would mean the screen deciding what they are.
+    """
+    with _lock:
+        searches = _read(SAVED_SEARCHES_FILE)
+        search = searches.get(search_id)
+        if search is None:
+            return None
+        search["hidden"] = hidden
+        searches[search_id] = search
+        _write(SAVED_SEARCHES_FILE, searches)
+    return search
+
+
+def delete_saved_search(search_id: str):
+    """Forget one saved search. Deleting an id that is already gone counts as success."""
+    with _lock:
+        searches = _read(SAVED_SEARCHES_FILE)
+        if searches.pop(search_id, None) is not None:
+            _write(SAVED_SEARCHES_FILE, searches)

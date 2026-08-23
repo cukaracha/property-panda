@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAiModeStore } from '../../store/useAiModeStore';
 import usePageContextStore, { type PageDescription } from '../../store/usePageContextStore';
 import type { Action } from '../../types/chatbot';
-import type { HiddenEntity, Property, SearchStatus } from './types/listings';
+import type { HiddenEntity, Property, SavedSearch, SearchStatus } from './types/listings';
 import {
   formatCurrency,
   formatNumber,
@@ -11,6 +11,7 @@ import {
   formatYear,
   STATUS_LABELS,
 } from './utils/format';
+import { describeFilters, toFilterForm } from './utils/filterOptions';
 import { toListingRows } from './utils/rows';
 
 export type ResultsPhase = 'running' | 'failed' | 'ready';
@@ -19,18 +20,22 @@ export interface SearchView {
   /** Set only when a search could not be started at all, which is the one failure that stays here. */
   errorMessage: string;
   filterSummary: string;
+  savedSearches: SavedSearch[];
 }
 
 export interface SearchHandlers {
   onRunSearch: () => void;
+  onRunSavedSearch: (searchId: string) => void;
+  onDeleteSavedSearch: (searchId: string) => void;
 }
 
 export interface ResultsView {
   phase: ResultsPhase;
   status: SearchStatus | null;
   errorMessage: string;
-  /** Empty when a reload restored this screen, since the form behind it did not survive. */
   filterSummary: string;
+  /** The name of the saved search these results belong to, or null while unsaved. */
+  savedSearchName: string | null;
   properties: Property[];
   hiddenUnitIds: Set<string>;
   hidden: HiddenEntity[];
@@ -45,6 +50,7 @@ export interface ResultsHandlers {
   onHideUnit: (listingId: string) => void;
   onUnhide: (entityKey: string) => void;
   onBackToSearch: () => void;
+  onSaveSearch: (name: string) => void;
 }
 
 // Per property, not per unit type: consolidated into one table, a per-type cap would
@@ -54,13 +60,13 @@ const MAX_UNITS_IN_CONTEXT = 10;
 const SEARCH_SUGGESTIONS = [
   'Run the search with the filters I have set',
   'Which filters are set right now',
-  'Search for freehold listings under 2 million',
+  'Run one of my saved searches',
 ];
 
 const RESULTS_SUGGESTIONS = [
   'Which unit here has the lowest price per sqft',
   'Hide the property with the fewest units',
-  'Take me back to the search filters',
+  'Save this search',
 ];
 
 const RUNNING_SUGGESTIONS = [
@@ -102,18 +108,19 @@ function getSearchDescription(view: SearchView): PageDescription {
   if (view.errorMessage) {
     return {
       ...base,
-      layout: 'The filter panel above an error message explaining why the search could not start.',
-      sections: ['Search filters', 'Search error'],
+      layout:
+        'The filter panel above the saved searches panel, above an error message explaining why the search could not start.',
+      sections: ['Search filters', 'Saved searches', 'Search error'],
       notes: `The search could not be started: ${view.errorMessage}. Nothing is scraping. Suggest adjusting the filters or trying again.`,
     };
   }
 
   return {
     ...base,
-    layout: 'A single column holding the search filter panel.',
-    sections: ['Search filters'],
+    layout: 'A single column holding the search filter panel above the saved searches panel.',
+    sections: ['Search filters', 'Saved searches'],
     notes:
-      'Only the filters are on screen, so there is nothing to describe about any property yet. The user sets the filters and starts a search, and you can start it on their behalf.',
+      'Only the filters and the saved searches are on screen, so there is nothing to describe about any property yet. The user sets the filters and starts a search, and you can start it on their behalf. A saved search is run by clicking its row, which starts a scrape with its stored filters and leaves for the results screen. Each saved search also carries the properties and units it hides, which come back with it on every run.',
   };
 }
 
@@ -125,12 +132,25 @@ function getSearchDetails(view: SearchView): string {
     lines.push('No search has been started from this screen yet.');
   }
   lines.push(`Current filters: ${view.filterSummary}`);
+
+  if (view.savedSearches.length === 0) {
+    lines.push('Saved searches: none.');
+  } else {
+    lines.push('Saved searches:');
+    for (const saved of view.savedSearches) {
+      const hiddenCount = saved.hidden.length;
+      lines.push(
+        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}`
+      );
+    }
+  }
+
   return lines.join('\n');
 }
 
 /**
- * Search screen page context. The only action here is starting the search,
- * because nothing else is on screen to act on.
+ * Search screen page context. The actions are starting the search and working the
+ * saved searches under it, which is everything on screen to act on.
  */
 export function useSearchPageContext(view: SearchView, handlers: SearchHandlers): void {
   const setPageContext = usePageContextStore(state => state.setPageContext);
@@ -145,7 +165,12 @@ export function useSearchPageContext(view: SearchView, handlers: SearchHandlers)
 
   useChatSurface('Property search', SEARCH_SUGGESTIONS);
 
-  const signature = view.errorMessage;
+  // The saved search ids go in, so an action never names a row that has since been
+  // deleted and the details never miss one that has just been saved elsewhere.
+  const signature = [
+    view.errorMessage,
+    view.savedSearches.map(saved => saved.searchId).join(','),
+  ].join('|');
 
   useEffect(() => {
     const actions: Action[] = [
@@ -156,6 +181,24 @@ export function useSearchPageContext(view: SearchView, handlers: SearchHandlers)
         example: '{"name": "run_search"}',
         display: () => 'Run the property search',
         callback: () => handlersRef.current.onRunSearch(),
+      },
+      {
+        name: 'run_saved_search',
+        description:
+          'Run a saved search again, using its savedSearchId. This starts a scrape with its stored filters and leaves this screen for the results.',
+        parameters: { savedSearchId: 'The savedSearchId of the search to run.' },
+        example: '{"name": "run_saved_search", "savedSearchId": "6f1c2b8e-..."}',
+        display: params => `Run saved search ${params.savedSearchId}`,
+        callback: params => handlersRef.current.onRunSavedSearch(params.savedSearchId),
+      },
+      {
+        name: 'delete_saved_search',
+        description:
+          'Forget a saved search, using its savedSearchId. The filters currently on the panel are untouched.',
+        parameters: { savedSearchId: 'The savedSearchId of the search to delete.' },
+        example: '{"name": "delete_saved_search", "savedSearchId": "6f1c2b8e-..."}',
+        display: params => `Delete saved search ${params.savedSearchId}`,
+        callback: params => handlersRef.current.onDeleteSavedSearch(params.savedSearchId),
       },
     ];
 
@@ -227,8 +270,15 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} items are hidden. Every card shows its project facts and all of its listings at once. Hiding is reversible: it filters at render time and can be undone from the hidden items panel.`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. ${describeSavedState(view)}`,
   };
+}
+
+/** Whether these results are a saved search, which decides if saving is offered. */
+function describeSavedState(view: ResultsView): string {
+  return view.savedSearchName
+    ? `These results are the saved search "${view.savedSearchName}", so hiding or unhiding anything updates it straight away.`
+    : 'These results are not saved. Saving them keeps the filters and the hidden items together under a name.';
 }
 
 function describeProperty(property: Property, hiddenUnitIds: Set<string>): string {
@@ -260,11 +310,11 @@ function describeProperty(property: Property, hiddenUnitIds: Set<string>): strin
  */
 function getResultsDetails(view: ResultsView): string {
   const lines: string[] = ['**Page content**:'];
-  // A reload brings the results back but not the form that ran them, so the filters
-  // are reported as unknown rather than read off a form that has reset to defaults.
+  // Empty only for a result set restored from storage written before the filters were
+  // snapshotted with it, which the next search puts right.
   const filters = view.filterSummary
     ? `The filters that ran this search: ${view.filterSummary}`
-    : 'The filters that ran this search are not on record, because the page was reloaded since. Do not guess at them.';
+    : 'The filters that ran this search are not on record. Do not guess at them.';
 
   if (view.phase === 'running') {
     lines.push(
@@ -287,6 +337,7 @@ function getResultsDetails(view: ResultsView): string {
   lines.push(
     `Search complete: ${view.propertyCount} properties and ${view.unitCount} units scraped.`,
     filters,
+    describeSavedState(view),
     `Properties on screen: ${view.properties.length}.`
   );
 
@@ -297,9 +348,9 @@ function getResultsDetails(view: ResultsView): string {
   }
 
   if (view.hidden.length === 0) {
-    lines.push('Hidden items: none.');
+    lines.push('Hidden items in these results: none.');
   } else {
-    lines.push('Hidden items:');
+    lines.push('Hidden items in these results:');
     for (const entity of view.hidden) {
       lines.push(
         `- ${entity.label} (entityKey ${entity.entityKey}, scope ${entity.scope}, id ${entity.id})`
@@ -312,9 +363,10 @@ function getResultsDetails(view: ResultsView): string {
 
 /**
  * Results screen page context. Registers what is on screen plus the actions that
- * belong to it: hiding a property or a unit, undoing either, and going back to
- * the filters. Re-running a search is not offered here, because the filters it
- * would run are on the other screen.
+ * belong to it: hiding a property or a unit, undoing either, saving the search that
+ * produced the results while it is still unsaved, and going back to the filters.
+ * Editing a saved search is not offered: fourteen groups of filters do not fit in an
+ * action payload, so that one stays a button on the screen.
  */
 export function useResultsPageContext(view: ResultsView, handlers: ResultsHandlers): void {
   const setPageContext = usePageContextStore(state => state.setPageContext);
@@ -342,6 +394,7 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     view.expired,
     view.showHidden,
     view.hidden.length,
+    view.savedSearchName ?? '',
     view.properties.map(property => property.propertyId).join(','),
   ].join('|');
 
@@ -375,10 +428,27 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
         display: params => `Unhide ${params.entityKey}`,
         callback: params => handlersRef.current.onUnhide(params.entityKey),
       },
+      {
+        name: 'save_search',
+        description:
+          'Save the filters that produced these results under a name, along with the items they hide, so the whole search can be run again from the search screen.',
+        // searchName, not name: the action's own name is already the `name` key, so a
+        // parameter called the same thing would overwrite it in the action JSON.
+        parameters: { searchName: 'A short name for the saved search.' },
+        example: '{"name": "save_search", "searchName": "Freehold in D09"}',
+        display: params => `Save this search as "${params.searchName}"`,
+        callback: params => handlersRef.current.onSaveSearch(params.searchName),
+      },
     ];
 
+    // save_search is the last of them, and only while these results are not already a
+    // saved search: once they are, saving again would make a second copy of one row.
     const actions: Action[] = [
-      ...(viewRef.current.phase === 'ready' ? resultActions : []),
+      ...(viewRef.current.phase === 'ready'
+        ? viewRef.current.savedSearchName
+          ? resultActions.slice(0, -1)
+          : resultActions
+        : []),
       {
         name: 'back_to_search',
         description:

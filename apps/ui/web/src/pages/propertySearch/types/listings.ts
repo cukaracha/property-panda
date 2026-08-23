@@ -3,8 +3,8 @@
  * shapes the search form sends back to it.
  *
  * `status`, `propertyCount`, `unitCount` and `error` are always present on a
- * results response. `scrapedAt`, `properties` and `hiddenCounts` only appear
- * once the job has succeeded, so every consumer must treat them as optional.
+ * results response. `scrapedAt` and `properties` only appear once the job has
+ * succeeded, so every consumer must treat them as optional.
  * Fields inside `info` are null when enrichment failed
  * (`info.enrichment === 'unavailable'`).
  */
@@ -12,11 +12,6 @@
 export type SearchStatus = 'queued' | 'scraping' | 'enriching' | 'succeeded' | 'failed';
 
 export type Enrichment = 'ok' | 'unavailable';
-
-export interface Floorplan {
-  label: string | null;
-  imageUrl: string | null;
-}
 
 export interface PropertyInfo {
   district: string | null;
@@ -44,7 +39,6 @@ export interface UnitTypeOverviewData {
   priceMax: number | null;
   psfMin: number | null;
   psfMax: number | null;
-  floorplans: Floorplan[];
 }
 
 export interface Unit {
@@ -58,7 +52,6 @@ export interface Unit {
   listedLabel: string | null;
   agentName: string | null;
   agencyName: string | null;
-  hidden: boolean;
 }
 
 export interface UnitType {
@@ -83,14 +76,8 @@ export interface ListingRow extends Unit {
 export interface Property {
   propertyId: string;
   name: string;
-  hidden: boolean;
   info: PropertyInfo;
   unitTypes: UnitType[];
-}
-
-export interface HiddenCounts {
-  properties: number;
-  units: number;
 }
 
 export interface SearchResultsResponse {
@@ -121,7 +108,6 @@ export interface SearchResultsResponse {
   detailsTotal: number;
   scrapedAt?: number;
   properties?: Property[];
-  hiddenCounts?: HiddenCounts;
   /** True when the scrape stopped before the last page, so results are partial. */
   truncated?: boolean;
   pagesScanned?: number;
@@ -152,11 +138,7 @@ export type PendingHide =
   | { scope: 'property'; property: Property }
   | { scope: 'unit'; property: Property; row: ListingRow };
 
-export interface ListHiddenResponse {
-  hidden: HiddenEntity[];
-}
-
-export interface HiddenMutationResponse {
+export interface MutationResponse {
   message?: string;
 }
 
@@ -192,6 +174,28 @@ export interface SearchRequest {
   source: 'propertyguru';
   maxPages: number;
   filters: SearchFilters;
+}
+
+/**
+ * One search kept for re-running. It stores the request rather than the form, so the
+ * server holds the same shape it validates a live search against, and the panel is
+ * repopulated from it through toFilterForm.
+ *
+ * Hiding is part of the search rather than a list of its own, so re-running a saved
+ * search brings back the same properties and units dismissed the last time.
+ */
+export interface SavedSearch {
+  searchId: string;
+  name: string;
+  source: 'propertyguru';
+  maxPages: number;
+  filters: SearchFilters;
+  hidden: HiddenEntity[];
+  createdAt: number;
+}
+
+export interface ListSavedSearchesResponse {
+  savedSearches: SavedSearch[];
 }
 
 /**

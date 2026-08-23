@@ -20,3 +20,22 @@ export function toListingRows(property: Property): ListingRow[] {
     )
     .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
 }
+
+/**
+ * Every `property#<id>` and `unit#<id>` key a result set contains.
+ *
+ * Hiding is kept per search and survives a re-run, so a stored list can name a unit
+ * that today's results no longer carry. The results screen filters the list through
+ * this before counting or listing it, which keeps the panel to what is on screen
+ * while the entry stays stored for the run that brings it back.
+ */
+export function resultEntityKeys(properties: Property[]): Set<string> {
+  const keys = new Set<string>();
+  for (const property of properties) {
+    keys.add(`property#${property.propertyId}`);
+    for (const unitType of property.unitTypes) {
+      for (const unit of unitType.units) keys.add(`unit#${unit.listingId}`);
+    }
+  }
+  return keys;
+}

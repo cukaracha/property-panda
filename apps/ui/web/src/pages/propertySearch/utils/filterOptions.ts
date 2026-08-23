@@ -11,7 +11,7 @@
  * (lease term, availability, tenancy conditions, room type) and to landed homes (land
  * size), because the scraper searches non-landed homes for sale.
  */
-import type { FilterFormState, SearchRequest } from '../types/listings';
+import type { FilterFormState, SearchFilters, SearchRequest } from '../types/listings';
 
 export interface FilterOption {
   value: string;
@@ -266,6 +266,52 @@ export function buildSearchRequest(form: FilterFormState): SearchRequest {
       withStream: toFlag(form, 'withStream'),
       lastPosted: toNumber(form.lastPosted),
     },
+  };
+}
+
+function toText(value: number | undefined): string {
+  return value === undefined ? '' : String(value);
+}
+
+function toFeatures(filters: SearchFilters): string[] {
+  return LISTING_FEATURE_OPTIONS.filter(option => filters[option.value as keyof SearchFilters]).map(
+    option => option.value
+  );
+}
+
+/**
+ * Put a request back in the panel, the inverse of buildSearchRequest.
+ *
+ * Every field is written rather than merged over the defaults, so a filter the
+ * request does not carry is cleared rather than left over from whatever was in the
+ * panel before. `sort` and `order` have no field to come back to and are dropped:
+ * they are the same on every search the panel builds.
+ */
+export function toFilterForm(request: SearchRequest): FilterFormState {
+  const filters = request.filters || {};
+  return {
+    minPrice: toText(filters.minPrice),
+    maxPrice: toText(filters.maxPrice),
+    minSize: toText(filters.minSize),
+    maxSize: toText(filters.maxSize),
+    minPsf: toText(filters.minPsf),
+    maxPsf: toText(filters.maxPsf),
+    minTop: toText(filters.minTop),
+    maxTop: toText(filters.maxTop),
+    bedrooms: filters.bedrooms ?? [],
+    bathrooms: filters.bathrooms ?? [],
+    propertyTypeCode: filters.propertyTypeCode ?? [],
+    districtCode: filters.districtCode ?? [],
+    tenureCode: filters.tenureCode ?? [],
+    floorLevel: filters.floorLevel ?? [],
+    furnishing: filters.furnishing ?? [],
+    unitFeatures: filters.unitFeatures ?? [],
+    projectFeatures: filters.projectFeatures ?? [],
+    listingFeatures: toFeatures(filters),
+    distanceToMrt: filters.distanceToMrt ?? '',
+    keyword: filters.keyword ?? '',
+    lastPosted: toText(filters.lastPosted),
+    maxPages: String(request.maxPages ?? 1),
   };
 }
 

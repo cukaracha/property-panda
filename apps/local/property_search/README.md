@@ -114,30 +114,38 @@ Each of these is read from the environment at start-up, so
 | `PROPERTY_FAIL_TTL_SECONDS` | 1 day    | How long a project page that failed is left alone     |
 | `CHAT_MODEL`                | `sonnet` | The model alias the assistant runs on                 |
 
-## Hiding
+## Saved searches and hiding
+
+A saved search is the request body itself, kept under a name in
+`.data/saved_searches.json` so a set of filters worth running twice does not
+have to be retyped. Running one starts an ordinary scrape.
 
 Hiding a property or a unit is a flag, not a delete. The result set keeps
 everything, the page filters at render time, and unhiding puts a row straight
-back with no re-scrape. The list lives in `.data/hidden.json`.
+back with no re-scrape. What is hidden belongs to the search that turned it up,
+so it is stored inside that search's row rather than in a list of its own: a
+search hides the same things every time it runs, and hiding something in one
+search leaves every other search alone. A search the user has not saved keeps
+its hidden items in the browser until they do.
 
 ## Layout
 
-| File                       | What it does                                                |
-| -------------------------- | ----------------------------------------------------------- |
-| `server.py`                | The API the SPA calls, and the background job handoff       |
-| `scraper.py`               | One job end to end: scrape, enrich, group, record           |
-| `browser.py`               | The visible Chrome session and the verification wait        |
-| `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup    |
-| `grouping.py`              | listings to properties to unit types to units               |
-| `store.py`                 | Job rows, property cache, hidden list, results (JSON files) |
-| `validation.py`            | Request validation for searches, hides and chat turns       |
-| `agent/runner.py`          | The SDK options and the event pipeline for one chat turn    |
-| `agent/stream_map.py`      | SDK messages to the `{type, content}` events the SPA reads  |
-| `agent/act_parser.py`      | Splits proposed `<act>` actions out of the streamed prose   |
-| `agent/format_prompt.py`   | The page context / actions / history / message envelope     |
-| `agent/prompts.json`       | The system prompt and the standing instructions             |
-| `agent/transcript.py`      | Chat history, one JSON file per session                     |
-| `agent/tokens.py`          | The Claude subscription token                               |
+| File                       | What it does                                               |
+| -------------------------- | ---------------------------------------------------------- |
+| `server.py`                | The API the SPA calls, and the background job handoff      |
+| `scraper.py`               | One job end to end: scrape, enrich, group, record          |
+| `browser.py`               | The visible Chrome session and the verification wait       |
+| `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup   |
+| `grouping.py`              | listings to properties to unit types to units              |
+| `store.py`                 | Job rows, property cache, saved searches, results (JSON)   |
+| `validation.py`            | Request validation for searches, saves and chat turns      |
+| `agent/runner.py`          | The SDK options and the event pipeline for one chat turn   |
+| `agent/stream_map.py`      | SDK messages to the `{type, content}` events the SPA reads |
+| `agent/act_parser.py`      | Splits proposed `<act>` actions out of the streamed prose  |
+| `agent/format_prompt.py`   | The page context / actions / history / message envelope    |
+| `agent/prompts.json`       | The system prompt and the standing instructions            |
+| `agent/transcript.py`      | Chat history, one JSON file per session                    |
+| `agent/tokens.py`          | The Claude subscription token                              |
 
 Adding another portal means one module under `sources/` and one entry in
 `scraper._SOURCES`; nothing else knows which site the records came from.

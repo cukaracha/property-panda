@@ -1,107 +1,86 @@
 /**
- * useHiddenEntities - the reversible hide list for properties and units.
+ * useHiddenEntities - the reversible hide list for the search on screen.
  *
- * Hiding never deletes anything: the page keeps the full result set and filters
- * at render time, so an unhide puts the card or row straight back. Each
- * mutation updates local state first, then reconciles with the server, and
- * rolls back only its own entity when the request fails, so two mutations in
- * the same tick cannot discard each other.
+ * Hiding never deletes anything: the page keeps the full result set and filters at
+ * render time, so an unhide puts the card or row straight back. The list belongs to
+ * the search rather than to the app, so it lives in the results store and reaches the
+ * server only once that search is a saved one. From then on every hide and unhide
+ * writes the whole list through, and a failed write puts the list back the way it was
+ * so the screen never shows a change the stored search did not take.
+ *
+ * Writes are chained one behind another through a ref. Each one sends the full list,
+ * so two hides in quick succession could otherwise land out of order and leave the
+ * server holding the earlier, shorter one.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { hideEntity, listHidden, unhideEntity } from '../../../services/listingsService';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { updateSavedSearchHidden } from '../../../services/listingsService';
+import { usePropertySearchResultsStore } from '../../../store/usePropertySearchStore';
 import type { HiddenEntity, HiddenScope } from '../types/listings';
 
 export interface HiddenEntitiesResult {
   hidden: HiddenEntity[];
   hiddenPropertyIds: Set<string>;
   hiddenUnitIds: Set<string>;
-  isLoading: boolean;
   error: string;
   hide: (scope: HiddenScope, id: string, label: string) => Promise<void>;
   unhide: (entityKey: string) => Promise<void>;
 }
 
 export function useHiddenEntities(): HiddenEntitiesResult {
-  const [hidden, setHidden] = useState<HiddenEntity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const hidden = usePropertySearchResultsStore(state => state.hidden);
+  const setHidden = usePropertySearchResultsStore(state => state.setHidden);
   const [error, setError] = useState('');
-  const hiddenRef = useRef<HiddenEntity[]>([]);
+  const writeChain = useRef<Promise<void>>(Promise.resolve());
 
-  useEffect(() => {
-    hiddenRef.current = hidden;
-  }, [hidden]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const result = await listHidden();
-      setHidden(result.hidden);
+  const mutate = useCallback(
+    (next: HiddenEntity[], previous: HiddenEntity[], failureMessage: string) => {
+      const { savedSearchId } = usePropertySearchResultsStore.getState();
+      setHidden(next);
       setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load hidden items');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      if (!savedSearchId) return Promise.resolve();
 
-  useEffect(() => {
-    let cancelled = false;
-    listHidden()
-      .then(result => {
-        if (cancelled) return;
-        setHidden(result.hidden);
-        setError('');
-      })
-      .catch(err => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load hidden items');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      const write = writeChain.current
+        .then(() => updateSavedSearchHidden(savedSearchId, next))
+        .then(() => undefined)
+        .catch(err => {
+          // Only roll back when nothing has moved on since, so a later mutation that
+          // already replaced this list is not undone by an older failure.
+          if (usePropertySearchResultsStore.getState().hidden === next) setHidden(previous);
+          setError(err instanceof Error ? err.message : failureMessage);
+        });
+      writeChain.current = write;
+      return write;
+    },
+    [setHidden]
+  );
 
   const hide = useCallback(
-    async (scope: HiddenScope, id: string, label: string) => {
+    (scope: HiddenScope, id: string, label: string) => {
+      const current = usePropertySearchResultsStore.getState().hidden;
       const entityKey = `${scope}#${id}`;
-      if (hiddenRef.current.some(entity => entity.entityKey === entityKey)) return;
+      if (current.some(entity => entity.entityKey === entityKey)) return Promise.resolve();
 
-      const optimistic: HiddenEntity = { entityKey, scope, id, label, createdAt: Date.now() };
-      setHidden(current =>
-        current.some(entity => entity.entityKey === entityKey) ? current : [...current, optimistic]
-      );
-      setError('');
-      try {
-        await hideEntity(scope, id, label);
-        await refresh();
-      } catch (err) {
-        setHidden(current => current.filter(entity => entity.entityKey !== entityKey));
-        setError(err instanceof Error ? err.message : 'Failed to hide the item');
-      }
+      // Seconds, because that is what the server stamps and both ends sort on it.
+      const entity: HiddenEntity = {
+        entityKey,
+        scope,
+        id,
+        label,
+        createdAt: Math.floor(Date.now() / 1000),
+      };
+      return mutate([entity, ...current], current, 'Failed to hide the item');
     },
-    [refresh]
+    [mutate]
   );
 
   const unhide = useCallback(
-    async (entityKey: string) => {
-      const removed = hiddenRef.current.find(entity => entity.entityKey === entityKey);
-      setHidden(current => current.filter(entity => entity.entityKey !== entityKey));
-      setError('');
-      try {
-        await unhideEntity(entityKey);
-        await refresh();
-      } catch (err) {
-        if (removed) {
-          setHidden(current =>
-            current.some(entity => entity.entityKey === entityKey) ? current : [...current, removed]
-          );
-        }
-        setError(err instanceof Error ? err.message : 'Failed to unhide the item');
-      }
+    (entityKey: string) => {
+      const current = usePropertySearchResultsStore.getState().hidden;
+      if (!current.some(entity => entity.entityKey === entityKey)) return Promise.resolve();
+      const next = current.filter(entity => entity.entityKey !== entityKey);
+      return mutate(next, current, 'Failed to unhide the item');
     },
-    [refresh]
+    [mutate]
   );
 
   const hiddenPropertyIds = useMemo(
@@ -114,5 +93,5 @@ export function useHiddenEntities(): HiddenEntitiesResult {
     [hidden]
   );
 
-  return { hidden, hiddenPropertyIds, hiddenUnitIds, isLoading, error, hide, unhide };
+  return { hidden, hiddenPropertyIds, hiddenUnitIds, error, hide, unhide };
 }

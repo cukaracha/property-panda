@@ -130,10 +130,6 @@ def _build_overview(units: list) -> dict:
         "priceMax": max(prices) if prices else None,
         "psfMin": min(psf) if psf else None,
         "psfMax": max(psf) if psf else None,
-        # Floorplans are per unit type on the project page's gallery, which is lazy
-        # loaded behind a tab. Left empty until that fetch is added; the UI already
-        # renders an empty gallery as "no floorplans".
-        "floorplans": [],
     }
 
 

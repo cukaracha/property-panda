@@ -1,0 +1,141 @@
+import { useState } from 'react';
+import { Eye, Pencil } from 'lucide-react';
+import Modal from '../../../components/modals/Modal';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+import SearchFilterFields from './SearchFilterFields';
+import { SAVED_SEARCH_NAME_MAX_LENGTH } from './SaveSearchModal';
+import type { FilterFormState, HiddenEntity } from '../types/listings';
+
+export interface EditSearchModalProps {
+  name: string;
+  form: FilterFormState;
+  hidden: HiddenEntity[];
+  /** "Save and rerun" from the results, "Save" from the saved searches list. */
+  confirmLabel: string;
+  isSaving: boolean;
+  onClose: () => void;
+  onSave: (name: string, form: FilterFormState, hidden: HiddenEntity[]) => void;
+}
+
+const GROUPS: { scope: HiddenEntity['scope']; title: string }[] = [
+  { scope: 'property', title: 'Hidden properties' },
+  { scope: 'unit', title: 'Hidden units' },
+];
+
+/**
+ * Edits one saved search: its name, its filters, and the items it hides.
+ *
+ * All three in one modal because they are one thing to the user, and nothing here
+ * touches the stored search until the footer is pressed. Cancel throws the draft away,
+ * which is what makes unhiding something in here safe to try.
+ *
+ * The caller mounts this only while it is open, so each opening starts from what is
+ * stored rather than from a draft left over from the last time.
+ */
+export default function EditSearchModal({
+  name,
+  form,
+  hidden,
+  confirmLabel,
+  isSaving,
+  onClose,
+  onSave,
+}: EditSearchModalProps) {
+  const [draftName, setDraftName] = useState(name);
+  const [draftForm, setDraftForm] = useState(form);
+  const [draftHidden, setDraftHidden] = useState(hidden);
+
+  const trimmed = draftName.trim();
+
+  const save = () => {
+    if (!trimmed || isSaving) return;
+    onSave(trimmed, draftForm, draftHidden);
+  };
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      dismissible={!isSaving}
+      title='Edit search'
+      description='Change the name, the filters, or the items this search keeps hidden.'
+      maxWidth='max-w-3xl'
+      icon={
+        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent-line bg-accent-soft text-cyan'>
+          <Pencil size={20} />
+        </span>
+      }
+      iconColor=''
+      footer={
+        <>
+          <Button variant='outline' onClick={onClose} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={!trimmed || isSaving}>
+            {isSaving ? 'Saving' : confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {/* The card clips rather than scrolls, so the long half of the modal scrolls
+          inside its own box and leaves the footer where it is. */}
+      <div className='max-h-[60vh] overflow-y-auto pr-1'>
+        <label className='type-ui-eyebrow mb-2 block' htmlFor='edit-search-name'>
+          Name
+        </label>
+        <Input
+          id='edit-search-name'
+          value={draftName}
+          maxLength={SAVED_SEARCH_NAME_MAX_LENGTH}
+          autoFocus
+          onChange={event => setDraftName(event.target.value)}
+        />
+        {!trimmed && <p className='type-ui-sm mt-2 text-rose'>A search needs a name.</p>}
+
+        <div className='mt-5 border-t border-line pt-4'>
+          <SearchFilterFields form={draftForm} onChange={setDraftForm} />
+        </div>
+
+        <div className='mt-5 space-y-4 border-t border-line pt-4'>
+          <p className='type-ui-eyebrow'>Hidden items</p>
+          {draftHidden.length === 0 ? (
+            <p className='type-ui-sm text-ink-3'>This search hides nothing.</p>
+          ) : (
+            GROUPS.map(group => {
+              const entries = draftHidden.filter(entity => entity.scope === group.scope);
+              if (entries.length === 0) return null;
+              return (
+                <div key={group.scope}>
+                  <p className='type-ui-sm mb-1 text-ink-3'>{group.title}</p>
+                  <ul className='divide-y divide-line-2 border-y border-line'>
+                    {entries.map(entity => (
+                      <li
+                        key={entity.entityKey}
+                        className='flex items-center justify-between gap-3 py-2'
+                      >
+                        <span className='min-w-0 truncate text-sm text-ink-2'>{entity.label}</span>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() =>
+                            setDraftHidden(current =>
+                              current.filter(item => item.entityKey !== entity.entityKey)
+                            )
+                          }
+                        >
+                          <Eye size={16} />
+                          Unhide
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}

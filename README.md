@@ -13,7 +13,7 @@ person, one machine.
   Browser (React SPA, apps/ui/web)  http://localhost:3000
       │
       ├── REST ──► /listings/*   ─► scraper (Selenium + visible Chrome) ─► PropertyGuru
-      │                              └─ jobs, results, hidden list, property cache → .data/*.json
+      │                              └─ jobs, results, saved searches, property cache → .data/*.json
       │
       └── SSE ──► /chat          ─► assistant (claude-agent-sdk → `claude` CLI)
                                      ├─ page context + page actions from the SPA
@@ -97,14 +97,14 @@ writes them into `.env.local` as `VITE_APP_NAME` and `VITE_ASSISTANT_NAME`.
 Everything the app remembers is under `apps/local/property_search/.data/`, which
 is gitignored and safe to delete:
 
-| File                | What                                              |
-| ------------------- | ------------------------------------------------- |
-| `jobs.json`         | Search job rows (24h TTL)                         |
-| `results/*.json`    | The grouped result of each search                 |
-| `properties.json`   | Project page cache (30 day TTL, 24h for failures) |
-| `hidden.json`       | Dismissed properties and units                    |
-| `chat/*.json`       | Chat transcripts, one per session                 |
-| `claude_token.json` | Your Claude subscription token (mode 0600)        |
+| File                  | What                                              |
+| --------------------- | ------------------------------------------------- |
+| `jobs.json`           | Search job rows (24h TTL)                         |
+| `results/*.json`      | The grouped result of each search                 |
+| `properties.json`     | Project page cache (30 day TTL, 24h for failures) |
+| `saved_searches.json` | Searches kept for re-running, and what each hides |
+| `chat/*.json`         | Chat transcripts, one per session                 |
+| `claude_token.json`   | Your Claude subscription token (mode 0600)        |
 
 Browser Cloudflare clearance lives separately in `.chrome-profile/`. Delete that
 if the browser ever gets into a state you cannot clear.

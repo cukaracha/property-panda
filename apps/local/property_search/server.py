@@ -6,9 +6,11 @@ no rework beyond pointing at this host instead of API Gateway:
 
     POST   /listings/search           -> 202 {jobId}, runs the scrape in the background
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
-    GET    /listings/hidden           -> the dismissed properties and units
-    POST   /listings/hidden           -> hide one
-    DELETE /listings/hidden/{key}     -> unhide one
+    GET    /listings/saved-searches   -> the searches kept for re-running
+    POST   /listings/saved-searches   -> save one, with the items it hides
+    PUT    /listings/saved-searches/{id} -> replace its name, request and hidden items
+    PUT    /listings/saved-searches/{id}/hidden -> replace its hidden items alone
+    DELETE /listings/saved-searches/{id} -> forget one
 
 It also serves the in-app assistant, which used to be a Bedrock AgentCore runtime the
 browser invoked directly and is now an agent in this process (see `agent/`):
@@ -150,7 +152,6 @@ def get_search_results(jobId: str = ""):
     view.update(
         {
             "properties": properties,
-            "hiddenCounts": apply_hidden(properties),
             "scrapedAt": row.get("updatedAt"),
             "truncated": bool(result.get("truncated")),
             "pagesScanned": int(result.get("pagesScanned") or 0),
@@ -160,60 +161,79 @@ def get_search_results(jobId: str = ""):
     return view
 
 
-def apply_hidden(properties: list) -> dict:
-    """Flag hidden properties and units in place, returning how many of each.
-
-    Hides are flags, not deletions: the payload keeps everything, the page filters at
-    render time, and unhiding puts a row straight back without re-running the scrape.
-    """
-    hidden_properties, hidden_units = store.hidden_id_sets()
-    counts = {"properties": 0, "units": 0}
-
-    for prop in properties:
-        prop["hidden"] = str(prop.get("propertyId")) in hidden_properties
-        if prop["hidden"]:
-            counts["properties"] += 1
-        for unit_type in prop.get("unitTypes") or []:
-            for unit in unit_type.get("units") or []:
-                unit["hidden"] = str(unit.get("listingId")) in hidden_units
-                if unit["hidden"]:
-                    counts["units"] += 1
-
-    return counts
+@app.get("/listings/saved-searches")
+def list_saved_searches():
+    """Every search kept for re-running, newest first."""
+    return {"savedSearches": store.list_saved_searches()}
 
 
-@app.get("/listings/hidden")
-def list_hidden():
-    """Every property and unit that has been dismissed, newest first."""
-    return {"hidden": store.list_hidden()}
-
-
-@app.post("/listings/hidden", status_code=201)
-async def create_hidden(request: Request):
-    """Hide a property or a single unit. Re-hiding the same key is a no-op."""
+@app.post("/listings/saved-searches", status_code=201)
+async def create_saved_search(request: Request):
+    """Save one search under a name. The id is minted here, so names may repeat."""
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON in request body")
 
     try:
-        scope, entity_id, label = validation.clean_hidden(body)
+        name, source, max_pages, filters, hidden = validation.clean_saved_search(body)
+        return store.put_saved_search(
+            str(uuid.uuid4()), name, source, max_pages, filters, hidden
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return store.put_hidden(scope, entity_id, label)
 
-
-@app.delete("/listings/hidden/{entity_key:path}")
-def delete_hidden(entity_key: str):
-    """Unhide by key. Deleting a key that is already gone counts as success."""
+@app.put("/listings/saved-searches/{search_id}")
+async def update_saved_search(search_id: str, request: Request):
+    """Replace one saved search's name, filters and hidden items."""
     try:
-        validation.parse_entity_key(entity_key)
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        validation.clean_search_id(search_id)
+        name, source, max_pages, filters, hidden = validation.clean_saved_search(body)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    store.delete_hidden(entity_key)
-    return {"entityKey": entity_key}
+    search = store.update_saved_search(search_id, name, source, max_pages, filters, hidden)
+    if search is None:
+        raise HTTPException(status_code=404, detail="That saved search no longer exists")
+    return search
+
+
+@app.put("/listings/saved-searches/{search_id}/hidden")
+async def update_saved_search_hidden(search_id: str, request: Request):
+    """Replace one saved search's hidden items, leaving its filters alone."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        validation.clean_search_id(search_id)
+        hidden = validation.clean_hidden_update(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    search = store.set_saved_search_hidden(search_id, hidden)
+    if search is None:
+        raise HTTPException(status_code=404, detail="That saved search no longer exists")
+    return search
+
+
+@app.delete("/listings/saved-searches/{search_id}")
+def delete_saved_search(search_id: str):
+    """Forget one saved search. Deleting an id that is already gone counts as success."""
+    try:
+        validation.clean_search_id(search_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    store.delete_saved_search(search_id)
+    return {"searchId": search_id}
 
 
 # ------------------------------------------------------------------------- chat
