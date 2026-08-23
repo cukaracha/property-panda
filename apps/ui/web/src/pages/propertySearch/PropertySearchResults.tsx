@@ -36,6 +36,7 @@ import { countUnpositioned, filterByMap, propertyPoint } from './utils/mapFilter
 import type { MapViewport } from '../../components/map/DistrictMap';
 import { formatCurrency } from '../../lib/listingsFormat';
 import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
+import { formatNewSince } from './utils/lastRun';
 
 /**
  * Search results - the scrape while it runs, then the properties it returned.
@@ -72,6 +73,7 @@ export default function PropertySearchResults() {
   const searchForm = usePropertySearchResultsStore(state => state.searchForm);
   const savedSearchId = usePropertySearchResultsStore(state => state.savedSearchId);
   const savedSearchName = usePropertySearchResultsStore(state => state.savedSearchName);
+  const newSince = usePropertySearchResultsStore(state => state.newSince);
   const setResults = usePropertySearchResultsStore(state => state.setResults);
   const linkSavedSearch = usePropertySearchResultsStore(state => state.linkSavedSearch);
   const setHidden = usePropertySearchResultsStore(state => state.setHidden);
@@ -322,7 +324,7 @@ export default function PropertySearchResults() {
 
   const removeBookmarkById = (propertyId: string) => unbookmark(`property#${propertyId}`);
 
-  const backToSearch = () => navigate('/properties');
+  const backToSearch = () => navigate('/search');
 
   // The request is rebuilt from the snapshot rather than stored alongside it, so a
   // saved search is byte for byte what a search run from these filters would send.
@@ -373,17 +375,21 @@ export default function PropertySearchResults() {
       linkSavedSearch(saved.searchId, saved.name);
       setHidden(saved.hidden);
       setBookmarked(saved.bookmarked);
-      const newJobId = await startSearch(request);
+      const newJobId = await startSearch(request, saved.searchId);
       if (!newJobId) {
         addToast('error', 'Saved, but the search could not be started.');
         return;
       }
       setIsEditingSearch(false);
+      // An edit never moves the last run, so the row that just came back still carries
+      // the stamp from the previous scrape, which is the baseline this run measures new
+      // listings against.
       startJob(newJobId, edited, {
         searchId: saved.searchId,
         name: saved.name,
         hidden: saved.hidden,
         bookmarked: saved.bookmarked,
+        lastRunAt: saved.lastRunAt,
       });
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Failed to update the saved search');
@@ -400,6 +406,7 @@ export default function PropertySearchResults() {
       filterSummary: searchForm ? describeFilters(searchForm) : '',
       mapFilterSummary,
       savedSearchName,
+      newSince,
       properties: visibleProperties,
       hiddenUnitIds: combinedHiddenUnitIds,
       hidden: hiddenInResults,
@@ -431,7 +438,7 @@ export default function PropertySearchResults() {
   // Nothing to watch and nothing to show, which is what storage having nothing to
   // restore looks like: no search has run in this tab, or the last result set was
   // too large to persist. The filters are where the user has to start.
-  if (!jobId && !results) return <Navigate to='/properties' replace />;
+  if (!jobId && !results) return <Navigate to='/search' replace />;
 
   // The modal is outside the column because it is fixed with inset 0, and a stacked
   // sibling's margin would push its scrim down and leave a strip of page uncovered.
@@ -448,7 +455,10 @@ export default function PropertySearchResults() {
               {isRunning ? 'Searching' : 'Search results'}
             </h1>
             {savedSearchName && (
-              <p className='type-ui-caption mt-1'>Saved search: {savedSearchName}</p>
+              <>
+                <p className='type-ui-caption mt-1'>Saved search: {savedSearchName}</p>
+                <p className='type-ui-caption mt-1'>{formatNewSince(newSince)}</p>
+              </>
             )}
           </div>
           {phase === 'ready' && (
@@ -569,6 +579,7 @@ export default function PropertySearchResults() {
                   onHideUnit={(property, row) => setPendingHide({ scope: 'unit', property, row })}
                   isBookmarked={bookmarkedPropertyIds.has(property.propertyId)}
                   onToggleBookmark={toggleBookmark}
+                  newSince={newSince}
                 />
               ))
             )}

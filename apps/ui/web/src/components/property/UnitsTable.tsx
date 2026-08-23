@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { EyeOff, Heart, Ruler } from 'lucide-react';
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 import DataTable, { type Column } from '../tables/DataTable';
+import { isNewSince } from '../../lib/listingRows';
 import FloorplanModal from './FloorplanModal';
 import type { ListingRow } from '../../types/listings';
 import {
@@ -19,6 +21,11 @@ export interface UnitsTableProps {
   onToggleShortlist: (row: ListingRow) => void;
   /** Absent on the shortlist screen, where there is no result set to hide a row from. */
   onHideUnit?: (row: ListingRow) => void;
+  /**
+   * When the search behind these rows last ran. A row posted after it is badged new.
+   * Absent wherever there is no run to measure against, which badges nothing.
+   */
+  newSince?: number | null;
   emptyMessage?: string;
 }
 
@@ -40,6 +47,7 @@ export default function UnitsTable({
   shortlistedIds,
   onToggleShortlist,
   onHideUnit,
+  newSince,
   emptyMessage = 'No units to show. They may all be hidden.',
 }: UnitsTableProps) {
   const [floorplanRow, setFloorplanRow] = useState<ListingRow | null>(null);
@@ -50,7 +58,19 @@ export default function UnitsTable({
   };
 
   const columns: Column<ListingRow>[] = [
-    { key: 'bedrooms', header: 'Bedrooms', render: row => row.unitTypeLabel },
+    {
+      key: 'bedrooms',
+      header: 'Bedrooms',
+      render: row =>
+        isNewSince(row, newSince) ? (
+          <span className='flex flex-wrap items-center gap-2'>
+            {row.unitTypeLabel}
+            <Badge tone='positive'>New</Badge>
+          </span>
+        ) : (
+          row.unitTypeLabel
+        ),
+    },
     { key: 'bathrooms', header: 'Baths', render: row => formatNumber(row.bathrooms) },
     { key: 'price', header: 'Price', render: row => formatCurrency(row.price) },
     { key: 'floorAreaSqft', header: 'Floor area', render: row => formatSqft(row.floorAreaSqft) },
@@ -66,7 +86,11 @@ export default function UnitsTable({
         keyExtractor={row => String(row.listingId)}
         emptyMessage={emptyMessage}
         onRowClick={openListing}
-        rowLabel={row => `Open listing ${row.listingId}`}
+        rowLabel={row =>
+          isNewSince(row, newSince)
+            ? `Open listing ${row.listingId}, new since the last run`
+            : `Open listing ${row.listingId}`
+        }
         actions={row => {
           const isShortlisted = shortlistedIds.has(String(row.listingId));
           return (

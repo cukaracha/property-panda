@@ -10,14 +10,14 @@ function App() {
   return (
     <Routes>
       <Route path='/' element={<AppLayout />}>
-        <Route index element={<Navigate to='/properties' replace />} />
-        <Route path='properties' element={<PropertySearch />} />
-        <Route path='properties/results' element={<PropertySearchResults />} />
+        <Route index element={<Navigate to='/search' replace />} />
+        <Route path='search' element={<PropertySearch />} />
+        <Route path='search/results' element={<PropertySearchResults />} />
         <Route path='shortlist' element={<Shortlist />} />
         <Route path='hidden' element={<AlwaysHidden />} />
         <Route path='profile' element={<Profile />} />
       </Route>
-      <Route path='*' element={<Navigate to='/properties' replace />} />
+      <Route path='*' element={<Navigate to='/search' replace />} />
     </Routes>
   );
 }

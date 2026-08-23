@@ -314,6 +314,8 @@ def process_job(job: dict):
             totalPages=result["totalPages"],
             truncated=result["truncated"],
         )
+        if job.get("savedSearchId"):
+            store.touch_saved_search(job["savedSearchId"])
     except Exception as e:
         print(f"Job {job_id} failed: {e}")
         store.update_status(

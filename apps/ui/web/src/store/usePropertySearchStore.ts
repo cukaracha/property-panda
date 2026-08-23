@@ -1,6 +1,6 @@
 /**
  * Zustand stores for the property search, which is two sibling routes rather than
- * one page: the filters on /properties and the results on /properties/results.
+ * one page: the filters on /search and the results on /search/results.
  *
  * They are two stores rather than one because only one half is persisted, and the
  * persist middleware writes on every set. A single store would re-serialise the
@@ -99,6 +99,15 @@ interface PropertySearchResultsStore {
   hidden: HiddenEntity[];
   /** The properties this search pins to the top of its results, newest first. */
   bookmarked: BookmarkedEntity[];
+  /**
+   * When the saved search behind these results last finished a scrape, captured at the
+   * moment this run was started. A listing posted after it is new.
+   *
+   * It is held here rather than read back from the saved search, because by the time the
+   * results land the server has already moved that stamp forward to this run, and the
+   * baseline the badges need is where it stood before.
+   */
+  newSince: number | null;
   startJob: (jobId: string, form: FilterFormState, saved: SavedSearchLink | null) => void;
   setResults: (results: SearchResultsResponse) => void;
   /**
@@ -116,6 +125,7 @@ export interface SavedSearchLink {
   name: string;
   hidden: HiddenEntity[];
   bookmarked: BookmarkedEntity[];
+  lastRunAt: number | null;
 }
 
 export const usePropertySearchResultsStore = create<PropertySearchResultsStore>()(
@@ -128,6 +138,7 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
       savedSearchName: null,
       hidden: [],
       bookmarked: [],
+      newSince: null,
       // The previous search's results go with it. They are not what this job is
       // scraping, and leaving them would put stale cards under a live progress card.
       // A run from the filters starts with nothing hidden and nothing pinned, a saved
@@ -141,6 +152,7 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
           savedSearchName: saved?.name ?? null,
           hidden: saved?.hidden ?? [],
           bookmarked: saved?.bookmarked ?? [],
+          newSince: saved?.lastRunAt ?? null,
         }),
       setResults: results => set({ results, jobId: null }),
       linkSavedSearch: (searchId, name) => set({ savedSearchId: searchId, savedSearchName: name }),
@@ -158,6 +170,7 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
         savedSearchName: state.savedSearchName,
         hidden: state.hidden,
         bookmarked: state.bookmarked,
+        newSince: state.newSince,
       }),
     }
   )

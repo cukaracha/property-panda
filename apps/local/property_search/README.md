@@ -16,7 +16,7 @@ can reach, which a Lambda cannot offer.
 From the repo root:
 
 ```bash
-./run.sh                              # http://localhost:3000/properties
+./run.sh                              # http://localhost:3000/search
 ```
 
 That builds anything missing — the Python virtualenv, `npm install`, and an

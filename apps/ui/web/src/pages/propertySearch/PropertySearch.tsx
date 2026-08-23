@@ -57,7 +57,7 @@ export default function PropertySearch() {
     const jobId = await startSearch(buildSearchRequest(form));
     if (!jobId) return;
     startJob(jobId, form, null);
-    navigate('/properties/results');
+    navigate('/search/results');
   };
 
   // The saved row goes with the job, so the results screen knows which search it is
@@ -65,7 +65,7 @@ export default function PropertySearch() {
   const runSavedSearch = async (saved: SavedSearch) => {
     setRunningSearchId(saved.searchId);
     const savedForm = toFilterForm(saved);
-    const jobId = await startSearch(buildSearchRequest(savedForm));
+    const jobId = await startSearch(buildSearchRequest(savedForm), saved.searchId);
     setRunningSearchId(null);
     if (!jobId) return;
     setForm(savedForm);
@@ -74,8 +74,9 @@ export default function PropertySearch() {
       name: saved.name,
       hidden: saved.hidden,
       bookmarked: saved.bookmarked,
+      lastRunAt: saved.lastRunAt,
     });
-    navigate('/properties/results');
+    navigate('/search/results');
   };
 
   const runSavedSearchById = (searchId: string) => {

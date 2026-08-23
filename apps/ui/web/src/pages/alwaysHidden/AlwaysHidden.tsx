@@ -61,7 +61,7 @@ export default function AlwaysHidden() {
             Hide a property or a unit from the search results and tick always hide to keep it out of
             every search.
           </p>
-          <Link to='/properties' className='btn btn-secondary btn-sm mt-4'>
+          <Link to='/search' className='btn btn-secondary btn-sm mt-4'>
             <Search size={16} />
             Go to the property search
           </Link>

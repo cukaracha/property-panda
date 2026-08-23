@@ -16,18 +16,18 @@ export interface StartSearchResult {
   isStarting: boolean;
   error: string;
   /** The new job id, or null when the request never got one. */
-  startSearch: (request: SearchRequest) => Promise<string | null>;
+  startSearch: (request: SearchRequest, savedSearchId?: string) => Promise<string | null>;
 }
 
 export function useStartSearch(): StartSearchResult {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState('');
 
-  const startSearch = useCallback(async (request: SearchRequest) => {
+  const startSearch = useCallback(async (request: SearchRequest, savedSearchId?: string) => {
     setIsStarting(true);
     setError('');
     try {
-      const result = await triggerSearch(request);
+      const result = await triggerSearch(request, savedSearchId);
       return result.jobId;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start the search');

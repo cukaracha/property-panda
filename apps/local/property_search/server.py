@@ -5,6 +5,8 @@ Serves the same routes the SPA's listings service already calls, so the React pa
 no rework beyond pointing at this host instead of API Gateway:
 
     POST   /listings/search           -> 202 {jobId}, runs the scrape in the background
+                                         optional savedSearchId names the search it
+                                         re-runs, whose last run is stamped on success
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
     GET    /listings/saved-searches   -> the searches kept for re-running
     POST   /listings/saved-searches   -> save one, with the items it hides and pins
@@ -100,11 +102,12 @@ async def create_search(request: Request):
 
     try:
         source, max_pages, filters = validation.build_request(body)
+        saved_search_id = validation.clean_optional_search_id(body.get("savedSearchId"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     job_id = str(uuid.uuid4())
-    job = store.create_job(job_id, source, max_pages, filters)
+    job = store.create_job(job_id, source, max_pages, filters, saved_search_id)
     _jobs.submit(scraper.process_job, job)
 
     return {"jobId": job_id, "status": "queued"}

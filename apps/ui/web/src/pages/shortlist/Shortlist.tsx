@@ -68,7 +68,7 @@ export default function Shortlist() {
             <p className='type-ui-sm mt-1 text-ink-3'>
               Run a search and click the heart on any unit to keep it here.
             </p>
-            <Link to='/properties' className='btn btn-secondary btn-sm mt-4'>
+            <Link to='/search' className='btn btn-secondary btn-sm mt-4'>
               <Heart size={16} />
               Go to the property search
             </Link>

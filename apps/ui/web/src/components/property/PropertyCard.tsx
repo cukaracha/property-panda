@@ -1,4 +1,5 @@
-import { Bookmark, EyeOff, ExternalLink, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { Bookmark, Building2, EyeOff, ExternalLink, MapPin } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -22,6 +23,12 @@ export interface PropertyCardProps {
   onToggleBookmark?: (property: Property) => void;
   /** A line under the header, for whatever the screen needs to say about this card. */
   caption?: string;
+  /**
+   * When the search behind this card last ran. Listings posted since it sort to the top
+   * of the table and carry a badge. The card itself is not reordered or marked, so the
+   * results keep the order the screen put them in.
+   */
+  newSince?: number | null;
   emptyMessage?: string;
 }
 
@@ -37,6 +44,10 @@ export interface PropertyCardProps {
  * The hide and bookmark affordances are dropped rather than disabled when the screen
  * passes no handler, which is how the shortlist renders the same card without a flag
  * saying which screen it is on.
+ *
+ * The thumbnail is the project's own hero image, straight from the source CDN. A good
+ * number of properties carry no image at all and any of the rest can fail to load, so
+ * the fallback tile is a normal state of the card rather than an error case.
  */
 export default function PropertyCard({
   property,
@@ -48,16 +59,31 @@ export default function PropertyCard({
   isBookmarked,
   onToggleBookmark,
   caption,
+  newSince,
   emptyMessage,
 }: PropertyCardProps) {
-  const rows = toListingRows(property);
+  const [imageFailed, setImageFailed] = useState(false);
+  const rows = toListingRows(property, newSince);
   const visibleRows = rows.filter(row => !hiddenUnitIds?.has(String(row.listingId)));
   const hiddenCount = rows.length - visibleRows.length;
 
   return (
     <Card className='p-5'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='min-w-0'>
+        {property.info.imageUrl && !imageFailed ? (
+          <img
+            src={property.info.imageUrl}
+            alt=''
+            loading='lazy'
+            onError={() => setImageFailed(true)}
+            className='h-16 w-16 shrink-0 rounded-surface border border-line bg-panel-2 object-cover sm:h-24 sm:w-24'
+          />
+        ) : (
+          <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-surface border border-line bg-panel-2 sm:h-24 sm:w-24'>
+            <Building2 size={24} className='text-ink-4' />
+          </div>
+        )}
+        <div className='min-w-0 flex-1'>
           <div className='flex flex-wrap items-center gap-2'>
             <h2 className='type-ui-title text-ink'>{property.name}</h2>
             {property.info.propertyType && <Badge>{property.info.propertyType}</Badge>}
@@ -112,6 +138,7 @@ export default function PropertyCard({
           shortlistedIds={shortlistedIds}
           onToggleShortlist={row => onToggleShortlist(property, row)}
           onHideUnit={onHideUnit && (row => onHideUnit(property, row))}
+          newSince={newSince}
           emptyMessage={emptyMessage}
         />
       </div>

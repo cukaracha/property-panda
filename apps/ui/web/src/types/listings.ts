@@ -282,6 +282,13 @@ export interface SavedSearch {
   filters: SearchFilters;
   hidden: HiddenEntity[];
   bookmarked: BookmarkedEntity[];
+  /**
+   * When this search last finished a scrape, and the line every listing is measured
+   * against to decide whether it is new. Null until the first run succeeds, and only
+   * ever moved by the server, so a run that failed does not skip past the listings it
+   * never got to see.
+   */
+  lastRunAt: number | null;
   createdAt: number;
 }
 

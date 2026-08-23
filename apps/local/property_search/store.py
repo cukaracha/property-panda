@@ -81,8 +81,14 @@ def _write(path: str, data: dict):
 # ------------------------------------------------------------------------ jobs
 
 
-def create_job(job_id: str, source: str, max_pages: int, filters: dict) -> dict:
-    """Record a queued job and return its row."""
+def create_job(
+    job_id: str, source: str, max_pages: int, filters: dict, saved_search_id: str = None
+) -> dict:
+    """Record a queued job and return its row.
+
+    savedSearchId is the search this run came from, when it came from one at all, so the
+    worker can stamp that search's last run once the scrape has succeeded.
+    """
     now = int(time.time())
     row = {
         "jobId": job_id,
@@ -90,6 +96,7 @@ def create_job(job_id: str, source: str, max_pages: int, filters: dict) -> dict:
         "source": source,
         "maxPages": max_pages,
         "filters": filters,
+        "savedSearchId": saved_search_id,
         "propertyCount": 0,
         "unitCount": 0,
         "error": None,
@@ -241,6 +248,7 @@ def list_saved_searches() -> list:
     for row in rows:
         row.setdefault("hidden", [])
         row.setdefault("bookmarked", [])
+        row.setdefault("lastRunAt", None)
     return rows
 
 
@@ -266,6 +274,7 @@ def put_saved_search(
         "filters": filters,
         "hidden": hidden,
         "bookmarked": bookmarked,
+        "lastRunAt": None,
         "createdAt": int(time.time()),
     }
     with _lock:
@@ -299,6 +308,10 @@ def update_saved_search(
         search = searches.get(search_id)
         if search is None:
             return None
+        # The row that goes back is what the results screen re-runs from, and it reads the
+        # last run off it to decide what counts as new. A row written before the field
+        # existed would otherwise come back without one.
+        search.setdefault("lastRunAt", None)
         search.update(
             {
                 "name": name,
@@ -343,6 +356,25 @@ def set_saved_search_bookmarked(search_id: str, bookmarked: list) -> dict:
         if search is None:
             return None
         search["bookmarked"] = bookmarked
+        searches[search_id] = search
+        _write(SAVED_SEARCHES_FILE, searches)
+    return search
+
+
+def touch_saved_search(search_id: str) -> dict:
+    """Stamp one saved search as run now, returning None when the id is unknown.
+
+    Only a scrape that succeeded calls this. A failed or abandoned run leaving the stamp
+    where it was is the point: the next run still measures new listings from the last
+    time results actually came back, rather than silently skipping past everything
+    posted in between.
+    """
+    with _lock:
+        searches = _read(SAVED_SEARCHES_FILE)
+        search = searches.get(search_id)
+        if search is None:
+            return None
+        search["lastRunAt"] = int(time.time())
         searches[search_id] = search
         _write(SAVED_SEARCHES_FILE, searches)
     return search

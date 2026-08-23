@@ -18,7 +18,8 @@ import {
   STATUS_LABELS,
 } from '../../lib/listingsFormat';
 import { describeFilters, toFilterForm } from './utils/filterOptions';
-import { toListingRows } from '../../lib/listingRows';
+import { isNewSince, toListingRows } from '../../lib/listingRows';
+import { formatLastRun } from './utils/lastRun';
 
 export type ResultsPhase = 'running' | 'failed' | 'ready';
 
@@ -48,6 +49,13 @@ export interface ResultsView {
   mapFilterSummary: string;
   /** The name of the saved search these results belong to, or null while unsaved. */
   savedSearchName: string | null;
+  /**
+   * When that saved search last ran, or null when this is its first run or the search is
+   * unsaved. Listings posted after it are badged new and sorted to the top of their
+   * property's table, so without this the assistant would describe an order it cannot
+   * account for.
+   */
+  newSince: number | null;
   properties: Property[];
   /** Both lists at once: a row is left out for the same reason whichever one holds it. */
   hiddenUnitIds: Set<string>;
@@ -145,7 +153,7 @@ function getSearchDetails(view: SearchView): string {
       const hiddenCount = saved.hidden.length;
       const bookmarkedCount = saved.bookmarked.length;
       lines.push(
-        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}, bookmarking ${bookmarkedCount} ${bookmarkedCount === 1 ? 'property' : 'properties'}`
+        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}, bookmarking ${bookmarkedCount} ${bookmarkedCount === 1 ? 'property' : 'properties'}. ${formatLastRun(saved.lastRunAt)}.`
       );
     }
   }
@@ -275,7 +283,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. There are two hidden lists: this search's own, which only affects it, and the always hidden list, which leaves an item out of every search and is reviewed on the Always hidden screen. Hiding something always rather than here is the user's choice, so only always hide when they ask for it. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeMapFilter(view)}${describeSavedState(view)}`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. There are two hidden lists: this search's own, which only affects it, and the always hidden list, which leaves an item out of every search and is reviewed on the Always hidden screen. Hiding something always rather than here is the user's choice, so only always hide when they ask for it. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. Listings posted since this search last ran carry a "New" badge and sit at the top of their property's table, above the rest, which are ordered by price. The cards themselves are not reordered by it. ${describeMapFilter(view)}${describeSavedState(view)}`,
   };
 }
 
@@ -289,6 +297,28 @@ function getResultsDescription(view: ResultsView): PageDescription {
 function describeMapFilter(view: ResultsView): string {
   if (!view.mapFilterSummary) return '';
   return `The map above the results is narrowing them: ${view.mapFilterSummary}. This is a view filter over what the search already returned -- it does not re-run the search and it never changes the saved search, so the properties listed here are a subset of what the search found. Resetting the map brings the rest back. `;
+}
+
+/**
+ * Which listings are marked new, and what new is being measured against.
+ *
+ * The badge and the sort it drives are the only part of the table the assistant cannot
+ * work out from the listings themselves, since a listing date says nothing on its own
+ * about when this search last looked.
+ */
+function describeNewListings(view: ResultsView): string {
+  if (!view.newSince) {
+    return 'No listing is marked new: this search has no earlier run to measure against.';
+  }
+  const newIds = view.properties
+    .flatMap(property => toListingRows(property))
+    .filter(row => !view.hiddenUnitIds.has(String(row.listingId)))
+    .filter(row => isNewSince(row, view.newSince))
+    .map(row => String(row.listingId));
+  const since = `New means posted since this search last ran, ${new Date(view.newSince * 1000).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}. Those listings are badged "New" and sorted to the top of their property's table.`;
+  return newIds.length === 0
+    ? `${since} Nothing on screen is new this run.`
+    : `${since} New on this screen: ${newIds.join(', ')}.`;
 }
 
 /** Whether these results are a saved search, which decides if saving is offered. */
@@ -378,6 +408,8 @@ function getResultsDetails(view: ResultsView): string {
       : `Shortlisted on this screen: ${shortlistedHere.map(row => String(row.listingId)).join(', ')}.`
   );
 
+  lines.push(describeNewListings(view));
+
   if (view.hidden.length === 0) {
     lines.push('Hidden items in these results: none.');
   } else {
@@ -450,6 +482,7 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     view.hidden.length,
     view.alwaysHidden.length,
     view.savedSearchName ?? '',
+    view.newSince ?? '',
     view.properties.map(property => property.propertyId).join(','),
     [...view.bookmarkedPropertyIds].sort().join(','),
     [...view.shortlistedIds].sort().join(','),

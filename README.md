@@ -48,7 +48,7 @@ does nothing until you approve it.
 ## Running it
 
 ```bash
-./run.sh                 # both services, and opens http://localhost:3000/properties
+./run.sh                 # both services, and opens http://localhost:3000/search
 ./run.sh --api           # only the local API
 ./run.sh --ui            # only the web app
 ./run.sh --reinstall     # rebuild both dependency trees

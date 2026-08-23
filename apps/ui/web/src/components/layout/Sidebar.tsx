@@ -42,12 +42,7 @@ export default function Sidebar({ onToggleCollapse, onNavigate }: SidebarProps) 
       </div>
 
       <nav className='nav'>
-        <NavLink
-          to='/properties'
-          className={navItemClass}
-          title='Property search'
-          onClick={onNavigate}
-        >
+        <NavLink to='/search' className={navItemClass} title='Property search' onClick={onNavigate}>
           <span className='ni-icon'>
             <Building2 size={18} />
           </span>

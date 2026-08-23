@@ -399,6 +399,18 @@ def clean_search_id(search_id: str) -> str:
     return search_id
 
 
+def clean_optional_search_id(search_id: str) -> str:
+    """The same check for a search id a request may leave out entirely.
+
+    Kept apart from build_request because clean_saved_search validates a stored search
+    through it, and a saved search must not end up carrying an id of its own inside the
+    request it replays.
+    """
+    if search_id is None or not str(search_id).strip():
+        return None
+    return clean_search_id(search_id)
+
+
 LISTING_ID_MAX_CHARS = 64
 PROPERTY_ID_MAX_CHARS = 100
 MAX_FLOORPLANS = 20

@@ -9,8 +9,25 @@
  */
 import type { ListingRow, Property } from '../types/listings';
 
-export function toListingRows(property: Property): ListingRow[] {
-  return property.unitTypes
+/**
+ * Whether a listing was posted since the saved search behind it last ran.
+ *
+ * A unit whose listing date never came through is never new: the alternative is
+ * calling something new because the scrape missed a field, which is the one wrong
+ * answer this badge must not give.
+ */
+export function isNewSince(row: ListingRow, newSince: number | null | undefined): boolean {
+  if (!newSince || row.listedAt == null) return false;
+  return row.listedAt > newSince;
+}
+
+/**
+ * With a `newSince` the rows posted since it come first, still price-ordered inside
+ * each half, so what is new is at the top of the property without the rest of the
+ * table losing the order it is read in. Without one the output is unchanged.
+ */
+export function toListingRows(property: Property, newSince?: number | null): ListingRow[] {
+  const rows = property.unitTypes
     .flatMap(unitType =>
       unitType.units.map(unit => ({
         ...unit,
@@ -19,6 +36,11 @@ export function toListingRows(property: Property): ListingRow[] {
       }))
     )
     .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+  if (!newSince) return rows;
+  return [
+    ...rows.filter(row => isNewSince(row, newSince)),
+    ...rows.filter(row => !isNewSince(row, newSince)),
+  ];
 }
 
 /**

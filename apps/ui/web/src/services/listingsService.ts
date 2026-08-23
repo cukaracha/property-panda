@@ -63,12 +63,21 @@ async function readBody<T>(response: Response): Promise<(T & { message?: string 
   }
 }
 
-/** Start an async scrape of the listings source. Returns the jobId (HTTP 202). */
-export async function triggerSearch(request: SearchRequest): Promise<TriggerSearchResponse> {
+/**
+ * Start an async scrape of the listings source. Returns the jobId (HTTP 202).
+ *
+ * savedSearchId names the search being re-run, when there is one. It rides beside the
+ * request rather than inside it, so a saved search is still byte for byte what a fresh
+ * run sends, and the server stamps that search's last run once the scrape succeeds.
+ */
+export async function triggerSearch(
+  request: SearchRequest,
+  savedSearchId?: string
+): Promise<TriggerSearchResponse> {
   const response = await fetch(`${API_URL}/listings/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify(savedSearchId ? { ...request, savedSearchId } : request),
   });
   const data = await readBody<TriggerSearchResponse>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to start the search');

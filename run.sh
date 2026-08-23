@@ -223,7 +223,7 @@ start_ui() {
 # the browser will not retry. Wait for the port instead, in the background so the service
 # logs keep streaming meanwhile.
 open_when_ready() {
-    local url="http://localhost:$UI_PORT/properties"
+    local url="http://localhost:$UI_PORT/search"
     local waited=0
 
     while [ -z "$(port_pid $UI_PORT)" ]; do
@@ -301,7 +301,7 @@ main() {
 
     echo
     if [ "$RUN_UI" = true ]; then
-        echo "  ${GREEN}Property search${RESET}  http://localhost:$UI_PORT/properties"
+        echo "  ${GREEN}Property search${RESET}  http://localhost:$UI_PORT/search"
     fi
     if [ "$RUN_API" = true ]; then
         echo "  ${DIM}Local API        http://localhost:$API_PORT${RESET}"
