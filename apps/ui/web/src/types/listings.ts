@@ -143,6 +143,16 @@ export type PendingHide =
   | { scope: 'property'; property: Property }
   | { scope: 'unit'; property: Property; row: ListingRow };
 
+/**
+ * The unit a filled heart is asking to take off the shortlist, held while the
+ * confirmation is open. One shape rather than a union, because a property is never
+ * shortlisted, only the units under it.
+ */
+export interface PendingUnshortlist {
+  property: Property;
+  row: ListingRow;
+}
+
 export interface MutationResponse {
   message?: string;
 }

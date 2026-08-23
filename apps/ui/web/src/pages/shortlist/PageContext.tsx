@@ -75,7 +75,7 @@ function getDescription(view: ShortlistView): PageDescription {
     layout:
       'A heading and a count above a list of property cards. Each card shows the project facts, when it was saved, and one table of every shortlisted unit in that property.',
     sections: ['Shortlist summary', 'Property cards'],
-    notes: `${view.unitCount} units across ${view.propertyCount} properties. Each unit was copied here as it stood when it was hearted and is never re-scraped, so the prices are as of the saved date on each card and may have moved. Only removing is possible on this screen. The shortlist belongs to the whole app rather than to a search, so removing a unit does not touch any search or anything it hides.`,
+    notes: `${view.unitCount} units across ${view.propertyCount} properties. Each unit was copied here as it stood when it was hearted and is never re-scraped, so the prices are as of the saved date on each card and may have moved. Only removing is possible on this screen. Clicking a filled heart opens a confirmation the user has to accept before the unit comes off. The shortlist belongs to the whole app rather than to a search, so removing a unit does not touch any search or anything it hides.`,
   };
 }
 
@@ -162,7 +162,7 @@ export function useShortlistPageContext(view: ShortlistView, handlers: Shortlist
     const removeAction: Action = {
       name: 'remove_from_shortlist',
       description:
-        'Take one unit off the shortlist, using its listingId. This is the same as clicking its filled heart.',
+        'Take one unit off the shortlist, using its listingId. Approving it here removes the unit, the same as clicking its filled heart and confirming.',
       parameters: { listingId: 'The listingId of the unit to remove.' },
       example: '{"name": "remove_from_shortlist", "listingId": "500133217"}',
       display: params => `Remove unit ${params.listingId} from the shortlist`,

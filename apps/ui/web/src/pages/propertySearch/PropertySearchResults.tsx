@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import Toast, { type ToastItem } from '../../components/ui/toast';
 import PropertyCard from '../../components/property/PropertyCard';
+import UnshortlistConfirmModal from '../../components/property/UnshortlistConfirmModal';
 import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
 import SaveSearchModal from './components/SaveSearchModal';
@@ -23,6 +24,7 @@ import type {
   HiddenEntity,
   ListingRow,
   PendingHide,
+  PendingUnshortlist,
   Property,
 } from '../../types/listings';
 import { buildSearchRequest, describeFilters } from './utils/filterOptions';
@@ -58,6 +60,7 @@ export default function PropertySearchResults() {
   const startJob = usePropertySearchResultsStore(state => state.startJob);
   const [showHidden, setShowHidden] = useState(false);
   const [pendingHide, setPendingHide] = useState<PendingHide | null>(null);
+  const [pendingUnshortlist, setPendingUnshortlist] = useState<PendingUnshortlist | null>(null);
   const [isNamingSearch, setIsNamingSearch] = useState(false);
   const [isEditingSearch, setIsEditingSearch] = useState(false);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
@@ -149,16 +152,21 @@ export default function PropertySearchResults() {
     }
   };
 
-  // The heart is a toggle, so one handler covers both directions. Adding sends the
-  // whole listing rather than its id, because a shortlist outlives the search that
-  // turned the unit up and there would be nothing left to look the id up against.
+  // The heart is a toggle, so one handler covers both directions, but they are not
+  // symmetrical. Adding sends the whole listing rather than its id, because a shortlist
+  // outlives the search that turned the unit up and there would be nothing left to look
+  // the id up against. Removing throws that copy away, so it asks first.
   const toggleShortlist = (property: Property, row: ListingRow) => {
-    const listingId = String(row.listingId);
-    if (shortlistedIds.has(listingId)) {
-      removeFromShortlist(listingId);
+    if (shortlistedIds.has(String(row.listingId))) {
+      setPendingUnshortlist({ property, row });
       return;
     }
     addToShortlist(property, row);
+  };
+
+  const confirmUnshortlist = async () => {
+    if (!pendingUnshortlist) return;
+    await removeFromShortlist(String(pendingUnshortlist.row.listingId));
   };
 
   const shortlistUnitById = (listingId: string) => {
@@ -381,6 +389,12 @@ export default function PropertySearchResults() {
         pending={pendingHide}
         onClose={() => setPendingHide(null)}
         onConfirm={confirmHide}
+      />
+
+      <UnshortlistConfirmModal
+        pending={pendingUnshortlist}
+        onClose={() => setPendingUnshortlist(null)}
+        onConfirm={confirmUnshortlist}
       />
 
       {isNamingSearch && searchForm && (
