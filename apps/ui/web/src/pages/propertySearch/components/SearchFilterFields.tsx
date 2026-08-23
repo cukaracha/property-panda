@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { Map, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { DropdownMenu } from '../../../components/inputs/DropdownMenu';
 import FilterChipGroup from './FilterChipGroup';
+import DistrictMapModal from './DistrictMapModal';
 import type { FilterFormState } from '../../../types/listings';
 import {
   BATHROOM_OPTIONS,
@@ -95,6 +96,7 @@ function countActive(form: FilterFormState, keys: (keyof FilterFormState)[]): nu
  */
 export default function SearchFilterFields({ form, onChange }: SearchFilterFieldsProps) {
   const [showMore, setShowMore] = useState(false);
+  const [isMapOpen, setIsMapOpen] = useState(false);
 
   const setField = (key: keyof FilterFormState, value: string) =>
     onChange({ ...form, [key]: value });
@@ -190,6 +192,14 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
             options={DISTRICT_OPTIONS}
             selected={form.districtCode}
             onToggle={value => toggleCode('districtCode', value)}
+            // The chips stay: the map is a second way into the same field, not the only
+            // way in, and either view updates the other because both read form.districtCode.
+            action={
+              <Button variant='ghost' size='sm' onClick={() => setIsMapOpen(true)}>
+                <Map size={15} />
+                View on map
+              </Button>
+            }
           />
           <FilterChipGroup
             label='Floor level'
@@ -281,6 +291,13 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
           </div>
         </div>
       )}
+
+      <DistrictMapModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        selected={form.districtCode}
+        onChange={codes => onChange({ ...form, districtCode: codes })}
+      />
     </>
   );
 }

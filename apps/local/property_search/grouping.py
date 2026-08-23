@@ -95,6 +95,10 @@ def _build_property(property_id: str, listings: list, enrichment: dict) -> dict:
             "topYear": enrichment.get("topYear"),
             "totalUnits": enrichment.get("totalUnits"),
             "floors": enrichment.get("floors"),
+            # Where the project sits, for the map. From the project page like the rest of
+            # this block, not from the listing: the search feed carries no coordinates.
+            "latitude": enrichment.get("latitude"),
+            "longitude": enrichment.get("longitude"),
             # Tenure and developer appear on both sides. Prefer the project page's
             # human-readable form ("99-year Leasehold") over the listing's code ("L99").
             "tenure": enrichment.get("tenure") or _tenure_label(first.get("tenureCode")),

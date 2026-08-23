@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cn } from '../../../lib/utils';
 
 export interface ChipOption<T extends string | number> {
@@ -12,6 +13,8 @@ export interface FilterChipGroupProps<T extends string | number> {
   options: ChipOption<T>[];
   selected: T[];
   onToggle: (value: T) => void;
+  /** Optional control rendered on the label row, for a second way into the same filter. */
+  action?: ReactNode;
 }
 
 /**
@@ -24,10 +27,14 @@ export default function FilterChipGroup<T extends string | number>({
   options,
   selected,
   onToggle,
+  action,
 }: FilterChipGroupProps<T>) {
   return (
     <div>
-      <p className='type-ui-eyebrow mb-1.5'>{label}</p>
+      <div className='mb-1.5 flex items-center justify-between gap-2'>
+        <p className='type-ui-eyebrow'>{label}</p>
+        {action}
+      </div>
       <div className='flex flex-wrap gap-2'>
         {options.map(option => {
           const isSelected = selected.includes(option.value);

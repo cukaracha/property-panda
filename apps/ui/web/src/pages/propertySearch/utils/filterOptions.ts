@@ -52,7 +52,7 @@ export const BATHROOM_OPTIONS: NumericFilterOption[] = [
 
 // Singapore's 28 postal districts, named as PropertyGuru names them. The chip shows the
 // code alone to keep 28 of them readable; the name is the hover text.
-const DISTRICT_NAMES = [
+export const DISTRICT_NAMES = [
   'Boat Quay / Raffles Place / Marina',
   'Chinatown / Tanjong Pagar',
   'Alexandra / Commonwealth',
@@ -87,6 +87,11 @@ export const DISTRICT_OPTIONS: FilterOption[] = DISTRICT_NAMES.map((name, index)
   const code = `D${String(index + 1).padStart(2, '0')}`;
   return { value: code, label: code, title: `${code} ${name}` };
 });
+
+/** The same names keyed by code, for anything that has a code and wants the name. */
+export const DISTRICT_NAME_BY_CODE: Record<string, string> = Object.fromEntries(
+  DISTRICT_NAMES.map((name, index) => [`D${String(index + 1).padStart(2, '0')}`, name])
+);
 
 export const TENURE_OPTIONS: FilterOption[] = [
   { value: 'F', label: 'Freehold' },
@@ -348,7 +353,17 @@ export function describeFilters(form: FilterFormState): string {
   if (form.propertyTypeCode.length > 0) {
     parts.push(`property types ${describeCodes(PROPERTY_TYPE_OPTIONS, form.propertyTypeCode)}`);
   }
-  if (form.districtCode.length > 0) parts.push(`districts ${form.districtCode.join(', ')}`);
+  if (form.districtCode.length > 0) {
+    // Named, not bare codes: this string is what the assistant reads as page context, and
+    // "D09" tells it nothing that "D09 Orchard / River Valley" does not.
+    parts.push(
+      `districts ${form.districtCode
+        .map(code =>
+          DISTRICT_NAME_BY_CODE[code] ? `${code} ${DISTRICT_NAME_BY_CODE[code]}` : code
+        )
+        .join(', ')}`
+    );
+  }
   if (form.tenureCode.length > 0) {
     parts.push(`tenure ${describeCodes(TENURE_OPTIONS, form.tenureCode)}`);
   }

@@ -40,6 +40,12 @@ export interface ResultsView {
   status: SearchStatus | null;
   errorMessage: string;
   filterSummary: string;
+  /**
+   * What the map is currently narrowing these results to, or '' when it is not. Needed
+   * because `properties` below is the map-filtered list: without this the assistant would
+   * describe a narrowed set as though it were everything the search found.
+   */
+  mapFilterSummary: string;
   /** The name of the saved search these results belong to, or null while unsaved. */
   savedSearchName: string | null;
   properties: Property[];
@@ -262,8 +268,20 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeSavedState(view)}`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Filling a heart shortlists that unit straight away, and clicking a filled one asks the user to confirm before it comes off. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Bookmarking a property pins its card to the top of these results and is just as reversible, but hiding still wins: a property that is both hidden and bookmarked stays off screen until it is unhidden. Bookmarks belong to this search, so they come back on every run of it. Shortlisting is separate from both and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeMapFilter(view)}${describeSavedState(view)}`,
   };
+}
+
+/**
+ * What the map is hiding, when it is hiding anything.
+ *
+ * Called out explicitly because the map is the one filter on this screen that leaves no
+ * mark on the cards themselves: a hidden property can be listed in the hidden panel, but a
+ * property the map has zoomed past is simply absent.
+ */
+function describeMapFilter(view: ResultsView): string {
+  if (!view.mapFilterSummary) return '';
+  return `The map above the results is narrowing them: ${view.mapFilterSummary}. This is a view filter over what the search already returned -- it does not re-run the search and it never changes the saved search, so the properties listed here are a subset of what the search found. Resetting the map brings the rest back. `;
 }
 
 /** Whether these results are a saved search, which decides if saving is offered. */

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useId } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -22,6 +22,15 @@ export interface ModalProps {
 }
 
 /**
+ * Ids of every open modal, innermost last.
+ *
+ * Escape is listened for on `document`, so without this every open modal answers the same
+ * keypress and a modal opened from inside another closes both -- taking the outer one's
+ * unsaved draft with it. Only the topmost may respond.
+ */
+const openModals: string[] = [];
+
+/**
  * Dark modal card (radius 20) centred over a blurred scrim. Header = accent
  * icon tile + title + description with a ghost close button; body and footer
  * follow. Styled by .modal-scrim / .modal-card (styles/app.css).
@@ -38,14 +47,25 @@ export default function Modal({
   maxWidth = 'max-w-[444px]',
   dismissible = true,
 }: ModalProps) {
+  const modalId = useId();
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) {
-        onClose();
-      }
+      if (e.key !== 'Escape' || !dismissible) return;
+      if (openModals[openModals.length - 1] !== modalId) return;
+      onClose();
     },
-    [onClose, dismissible]
+    [onClose, dismissible, modalId]
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    openModals.push(modalId);
+    return () => {
+      const index = openModals.lastIndexOf(modalId);
+      if (index !== -1) openModals.splice(index, 1);
+    };
+  }, [isOpen, modalId]);
 
   useEffect(() => {
     if (isOpen) {

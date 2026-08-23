@@ -34,6 +34,22 @@ Project page (https://www.propertyguru.com.sg/project/{slug}-{projectId})
     table of `<tr class="property-attr">` rows, label in `td.label-block`, value in
     `td.value-block`. Observed labels: Project Name, project type, Developer, Tenure,
     PSF, Completion Year, # of Floors, Total Units. The hero image is `og:image`.
+
+    This page is also the only place the project's coordinates appear, and it carries
+    them three times over:
+      <meta property="place:location:latitude|longitude" content="...">
+      <meta itemprop="latitude|longitude" content="...">     (schema.org/GeoCoordinates)
+      <div id="map-canvas" data-latitude="..." data-longitude="...">
+    Two of the three are read below, so one being dropped upstream cannot silently zero
+    the feature. Note the meta tags appear a second time inside an escaped JSON payload
+    further down the page; matching the literal `" content="` form keeps the parse on the
+    real markup.
+
+    Coordinates are NOT on the search results page. All 19,476 scalar fields of
+    `pageData.data` were scanned both by key name and by value (any float in Singapore's
+    longitude range, which would have caught a name we'd never guess): zero hits. The
+    listing page does carry them, but returns the identical value to the project page --
+    position is a property-level fact, so reading it here costs no extra page loads.
 """
 
 import html as html_lib
@@ -95,6 +111,12 @@ _ATTR_ROW_RE = re.compile(
     re.S,
 )
 _OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
+_GEO_META_RE = re.compile(
+    r'<meta property="place:location:(latitude|longitude)" content="([^"]+)"'
+)
+_GEO_CANVAS_RE = re.compile(
+    r'id="map-canvas"[^>]*?\bdata-latitude="([^"]*)"[^>]*?\bdata-longitude="([^"]*)"'
+)
 _TAG_RE = re.compile(r"<[^>]*>")
 
 
@@ -281,6 +303,7 @@ class PropertyGuruSource:
                 attrs[label] = value
 
         image_match = _OG_IMAGE_RE.search(html)
+        latitude, longitude = self._geo(html)
 
         return {
             "topYear": self._as_int(attrs.get("completion year")),
@@ -291,6 +314,12 @@ class PropertyGuruSource:
             "propertyType": attrs.get("project type") or "",
             "psfRange": attrs.get("psf") or "",
             "imageUrl": image_match.group(1) if image_match else "",
+            # Always both keys, None included: store.get_property_cache reads their
+            # absence as "written before coordinates were captured" and refetches. A page
+            # that genuinely has no point must therefore still say so, or it would be
+            # refetched on every search forever.
+            "latitude": latitude,
+            "longitude": longitude,
         }
 
     # ---------------------------------------------------------------- helpers
@@ -310,6 +339,47 @@ class PropertyGuruSource:
     def _text(raw: str) -> str:
         """Strip tags and unescape entities from one microdata cell."""
         return html_lib.unescape(_TAG_RE.sub("", raw or "")).strip()
+
+    @classmethod
+    def _geo(cls, html: str) -> tuple:
+        """Return (latitude, longitude) from a project page, or (None, None).
+
+        Two carriers rather than one, because a missing coordinate does not look like a
+        failure anywhere downstream -- the property simply stops appearing on the map,
+        which reads as the map being wrong. Both must agree on being present: half a
+        point is not a position, so a page offering only one is treated as offering none.
+        """
+        meta = dict(_GEO_META_RE.findall(html or ""))
+        latitude = cls._as_float(meta.get("latitude"))
+        longitude = cls._as_float(meta.get("longitude"))
+
+        if latitude is None or longitude is None:
+            canvas = _GEO_CANVAS_RE.search(html or "")
+            if canvas:
+                latitude = cls._as_float(canvas.group(1))
+                longitude = cls._as_float(canvas.group(2))
+
+        if latitude is None or longitude is None:
+            return None, None
+        # Anything outside Singapore is a parse that latched onto the wrong element, not
+        # a property in another country, and a stray point drags the map's fit with it.
+        if not (1.15 <= latitude <= 1.50 and 103.55 <= longitude <= 104.10):
+            return None, None
+        return latitude, longitude
+
+    @staticmethod
+    def _as_float(value):
+        """Coerce a coordinate string to a float, or None when it is not a number."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(str(value).strip())
+        except ValueError:
+            return None
 
     @staticmethod
     def _as_int(value):

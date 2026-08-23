@@ -21,6 +21,13 @@ export interface PropertyInfo {
   topYear: number | null;
   totalUnits: number | null;
   floors: number | null;
+  /**
+   * Where the project sits. Null when the project page carried no point, and absent
+   * entirely on results scraped before the map existed -- so read these through
+   * `propertyPoint`, which treats both the same, rather than trusting the type here.
+   */
+  latitude: number | null;
+  longitude: number | null;
   tenure: string | null;
   developer: string | null;
   propertyType: string | null;

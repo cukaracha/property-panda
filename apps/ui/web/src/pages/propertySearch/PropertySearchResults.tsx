@@ -10,6 +10,7 @@ import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
 import SaveSearchModal from './components/SaveSearchModal';
 import EditSearchModal from './components/EditSearchModal';
+import ResultsMapPanel from './components/ResultsMapPanel';
 import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
 import { useBookmarkedEntities } from './hooks/useBookmarkedEntities';
@@ -29,7 +30,9 @@ import type {
   PendingUnshortlist,
   Property,
 } from '../../types/listings';
-import { buildSearchRequest, describeFilters } from './utils/filterOptions';
+import { buildSearchRequest, describeFilters, DISTRICT_NAME_BY_CODE } from './utils/filterOptions';
+import { countUnpositioned, filterByMap, propertyPoint } from './utils/mapFilter';
+import type { MapViewport } from '../../components/map/DistrictMap';
 import { formatCurrency } from '../../lib/listingsFormat';
 import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
 
@@ -52,6 +55,12 @@ import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
  *
  * The filters behind the results are persisted with them, so this screen can save
  * the search it is showing even after a reload has emptied the filter panel.
+ *
+ * The map above the cards is a view filter and only that: it narrows what is on screen
+ * and is never written to the search, the server or the saved search, which is why it is
+ * held in plain component state and starts over with each result set. Changing the
+ * districts a saved search covers is Edit search's job, since that has to re-run the
+ * scrape to mean anything.
  */
 export default function PropertySearchResults() {
   const navigate = useNavigate();
@@ -72,6 +81,24 @@ export default function PropertySearchResults() {
   const [isEditingSearch, setIsEditingSearch] = useState(false);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  // Where the map is pointing. Deliberately plain component state: this narrows what is on
+  // screen and nothing else. It is never written to searchForm, never sent to the server
+  // and never persisted, so zooming cannot alter a saved search -- unlike hiding and
+  // bookmarking, which do write through (see useHiddenEntities). Editing the districts a
+  // saved search covers goes through Edit search, which re-runs the scrape.
+  const [mapSelection, setMapSelection] = useState<string[]>([]);
+  const [mapViewport, setMapViewport] = useState<MapViewport | null>(null);
+  const [mappedResults, setMappedResults] = useState(results);
+
+  // A fresh result set starts with the map wide open. Carrying the old view over would let
+  // a search re-run for different districts come back looking empty, with only the count
+  // line to explain why. Adjusted during render rather than in an effect, which is the
+  // supported way to reset state when an input changes and avoids a second paint.
+  if (results !== mappedResults) {
+    setMappedResults(results);
+    setMapSelection([]);
+    setMapViewport(null);
+  }
 
   const addToast = useCallback((type: ToastItem['type'], message: string) => {
     const id = Date.now();
@@ -114,16 +141,57 @@ export default function PropertySearchResults() {
   const phase = isRunning ? 'running' : isFailed ? 'failed' : 'ready';
 
   const allProperties = useMemo(() => results?.properties ?? [], [results]);
-  // Bookmarks sort rather than filter, and they sort after hiding, so a property that
-  // is both stays off screen. Each half keeps the order the scrape returned it in, so
-  // pinning a card moves it to the front without reshuffling anything around it.
+
+  // What the map draws pins for: everything still on the search, before the map narrows
+  // it. Pinning only what survives the map would erase the pins the user is zooming
+  // towards, so the pins show what is available and the list shows what is selected.
+  const mappableProperties = useMemo(
+    () => allProperties.filter(property => !hiddenPropertyIds.has(property.propertyId)),
+    [allProperties, hiddenPropertyIds]
+  );
+
+  // Bookmarks sort rather than filter, and they sort after hiding and after the map, so a
+  // property that is both stays off screen. Each half keeps the order the scrape returned
+  // it in, so pinning a card moves it to the front without reshuffling anything around it.
   const visibleProperties = useMemo(() => {
-    const shown = allProperties.filter(property => !hiddenPropertyIds.has(property.propertyId));
+    const shown = filterByMap(mappableProperties, mapSelection, mapViewport);
     return [
       ...shown.filter(property => bookmarkedPropertyIds.has(property.propertyId)),
       ...shown.filter(property => !bookmarkedPropertyIds.has(property.propertyId)),
     ];
-  }, [allProperties, hiddenPropertyIds, bookmarkedPropertyIds]);
+  }, [mappableProperties, bookmarkedPropertyIds, mapSelection, mapViewport]);
+
+  const mapMarkers = useMemo(
+    () =>
+      mappableProperties.flatMap(property => {
+        const point = propertyPoint(property);
+        if (!point) return [];
+        return [{ id: property.propertyId, x: point.x, y: point.y, dimmed: point.approximate }];
+      }),
+    [mappableProperties]
+  );
+  const unpositionedCount = useMemo(
+    () => countUnpositioned(mappableProperties),
+    [mappableProperties]
+  );
+  const approximateCount = mapMarkers.filter(marker => marker.dimmed).length;
+  const isMapFiltering = mapSelection.length > 0 || mapViewport !== null;
+  // Prose for the assistant, since it is handed the map-filtered list. Names the districts
+  // rather than the viewport rectangle: the numbers of a projected box mean nothing to it.
+  const mapFilterSummary = !isMapFiltering
+    ? ''
+    : [
+        mapSelection.length
+          ? `districts ${mapSelection
+              .map(code =>
+                DISTRICT_NAME_BY_CODE[code] ? `${code} ${DISTRICT_NAME_BY_CODE[code]}` : code
+              )
+              .join(', ')}`
+          : '',
+        mapViewport ? 'zoomed to part of the island' : '',
+      ]
+        .filter(Boolean)
+        .join(', and ');
   const expired = Boolean(results?.expired);
 
   // What the panel and the count show: a search keeps hiding something a later run
@@ -299,6 +367,7 @@ export default function PropertySearchResults() {
       status: status?.status ?? null,
       errorMessage,
       filterSummary: searchForm ? describeFilters(searchForm) : '',
+      mapFilterSummary,
       savedSearchName,
       properties: visibleProperties,
       hiddenUnitIds,
@@ -402,6 +471,18 @@ export default function PropertySearchResults() {
           </Card>
         ) : (
           <div className='space-y-4'>
+            {allProperties.length > 0 && (
+              <ResultsMapPanel
+                selected={mapSelection}
+                onSelectionChange={setMapSelection}
+                onViewportChange={setMapViewport}
+                markers={mapMarkers}
+                unpositionedCount={unpositionedCount}
+                isFiltering={isMapFiltering}
+                approximateCount={approximateCount}
+              />
+            )}
+
             <p className='type-ui-caption'>
               {results?.propertyCount ?? 0} properties and {results?.unitCount ?? 0} units found.{' '}
               {visibleProperties.length} of {allProperties.length} properties shown.

@@ -166,6 +166,10 @@ def get_property_cache(property_ids: list) -> tuple:
     Both halves come out of one read. The failures are returned so the caller can skip
     them: without that, a project page that 404s is re-fetched on every future search
     forever, spending the whole retry budget each time on an answer that has not changed.
+
+    A record written before the parser learned a field is stale even inside its TTL, or
+    the field would not appear for up to 30 days. `latitude` is the current such field;
+    see _is_current below for why its absence, and not its value, is what counts.
     """
     now = int(time.time())
     with _lock:
@@ -178,11 +182,27 @@ def get_property_cache(property_ids: list) -> tuple:
         if not entry:
             continue
         if entry.get("record") is not None:
-            if now - int(entry.get("updatedAt") or 0) < PROPERTY_TTL_SECONDS:
-                records[property_id] = entry.get("record") or {}
+            record = entry.get("record") or {}
+            if (
+                now - int(entry.get("updatedAt") or 0) < PROPERTY_TTL_SECONDS
+                and _is_current(record)
+            ):
+                records[property_id] = record
         elif now - int(entry.get("failedAt") or 0) < PROPERTY_FAIL_TTL_SECONDS:
             failed.add(property_id)
     return records, failed
+
+
+def _is_current(record: dict) -> bool:
+    """False for a record the current parser would fill in more of, so it is re-fetched.
+
+    Keyed on the field being *absent*, never on it being None. The parser writes
+    `latitude: None` for a project page that genuinely has no coordinates, so treating a
+    null as stale would re-fetch that project on every search forever -- the same runaway
+    the `failedAt` tombstone above exists to stop. Absence means "written before the
+    parser read coordinates at all", which is true once and then never again.
+    """
+    return "latitude" in record
 
 
 def put_property_cache(records: dict, failed=()):
