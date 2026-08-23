@@ -51,12 +51,14 @@ def get_source(name: str):
     return source_class()
 
 
-def scrape_search_pages(session, source, filters, max_pages):
+def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
     """Walk the search result pages in one browser session, deduplicating as we go.
 
     Page 1 goes on its own because its payload is what says how many pages the search
-    actually has; the rest are handed over as one batch and load across the tabs.
+    actually has; the rest are handed over as one batch and load across the tabs. That
+    is also why `on_progress` cannot report a total until page 1 has landed.
     """
+    report = on_progress or (lambda done, total: None)
     first_url = source.build_search_url(filters, 1)
     html = session.fetch_html(first_url, must_contain="__NEXT_DATA__")
     total_pages = source.total_pages(html)
@@ -80,9 +82,14 @@ def scrape_search_pages(session, source, filters, max_pages):
     pages_scanned = 1
 
     last_page = min(max_pages, total_pages) if total_pages else max_pages
+    report(1, last_page)
     rest = [(page, source.build_search_url(filters, page)) for page in range(2, last_page + 1)]
     if rest:
-        fetched = session.fetch_many(rest, must_contain="__NEXT_DATA__")
+        fetched = session.fetch_many(
+            rest,
+            must_contain="__NEXT_DATA__",
+            on_progress=lambda done, total: report(1 + done, last_page),
+        )
         for page, _ in rest:
             page_html = fetched.get(page)
             if not page_html:
@@ -177,8 +184,9 @@ def _in_range(value, low, high) -> bool:
     return (low is None or value >= low) and (high is None or value <= high)
 
 
-def enrich_properties(session, source, listings):
+def enrich_properties(session, source, listings, on_progress=None):
     """Fetch each uncached project page once, returning propertyId -> project record."""
+    report = on_progress or (lambda done, total: None)
     by_id = {}
     for listing in listings:
         property_id = listing.get("propertyId")
@@ -198,10 +206,13 @@ def enrich_properties(session, source, listings):
     print(
         f"Property cache: {len(cached)} hit, {len(failed)} known bad, {len(targets)} to fetch"
     )
+    report(0, len(targets))
     if not targets:
         return cached
 
-    fetched = session.fetch_many(targets, must_contain="property-attr")
+    fetched = session.fetch_many(
+        targets, must_contain="property-attr", on_progress=report
+    )
 
     records = {}
     unavailable = []
@@ -237,10 +248,22 @@ def run_job(job: dict) -> dict:
         """Surface what the browser is blocked on, so the UI can say so mid-scrape."""
         store.update_status(job_id, note=message or None)
 
+    def pages(done, total):
+        """Report search page progress onto the job row, for the readout."""
+        store.update_status(job_id, pagesFetched=done, pagesTotal=total)
+
+    def details(done, total):
+        """Report project page progress onto the job row, for the readout.
+
+        A total of 0 here means every property was already cached, which is the whole
+        difference between a warm search and a cold one.
+        """
+        store.update_status(job_id, detailsFetched=done, detailsTotal=total)
+
     with browser.BrowserSession(on_notice=notice) as session:
         store.update_status(job_id, "scraping")
         listings, pages_scanned, total_pages, truncated = scrape_search_pages(
-            session, source, filters, max_pages
+            session, source, filters, max_pages, on_progress=pages
         )
         # Before enrichment, so a listing that never belonged here does not cost a page
         # load on the way out.
@@ -248,7 +271,7 @@ def run_job(job: dict) -> dict:
         print(f"Scraped {len(listings)} distinct listings over {pages_scanned} page(s)")
 
         store.update_status(job_id, "enriching", listingCount=len(listings))
-        properties_cache = enrich_properties(session, source, listings)
+        properties_cache = enrich_properties(session, source, listings, on_progress=details)
 
     properties = keep_matching_properties(
         grouping.group_listings(listings, properties_cache), filters

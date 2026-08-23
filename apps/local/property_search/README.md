@@ -63,6 +63,13 @@ tabs wait in parallel instead of queueing behind each other. They are there to
 overlap the waiting, not to hit the site harder: every navigation passes through
 one shared rate limit, so the tabs take turns rather than bursting.
 
+While it runs, the page counts rather than sitting on one label: the listings
+step says which result page it is on, and the property details step says how
+many project pages of how many it has fetched. That second one is most of a cold
+run, so it is the number worth watching. It reads `cached` instead when the
+property cache already covered every property, which is the whole difference
+between a warm search and a cold one.
+
 Scrapes run one at a time: Chrome holds an exclusive lock on its profile
 directory, and that profile is what carries the Cloudflare clearance between
 runs.

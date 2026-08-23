@@ -9,13 +9,18 @@ export const NOT_AVAILABLE = 'Not available';
 
 export const STATUS_LABELS: Record<SearchStatus, string> = {
   queued: 'Waiting in the queue',
-  scraping: 'Scraping listings',
-  enriching: 'Adding property details',
-  succeeded: 'Search complete',
+  scraping: 'Fetching listings',
+  enriching: 'Fetching property details',
+  succeeded: 'Done',
   failed: 'Search failed',
 };
 
-export const ACTIVE_STEPS: SearchStatus[] = ['queued', 'scraping', 'enriching'];
+/**
+ * The steps the progress card lists. `queued` is not one of them: the job is only
+ * queued for the seconds it takes Chrome to start, and a fourth step that is always
+ * already ticked reads as noise.
+ */
+export const PROGRESS_STEPS: SearchStatus[] = ['scraping', 'enriching', 'succeeded'];
 
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined) return NOT_AVAILABLE;

@@ -166,8 +166,11 @@ export default function PropertySearch() {
       {phase === 'running' && (
         <ScrapeProgress
           status={status?.status ?? 'queued'}
-          propertyCount={status?.propertyCount ?? 0}
-          unitCount={status?.unitCount ?? 0}
+          listingCount={status?.listingCount ?? 0}
+          pagesFetched={status?.pagesFetched ?? 0}
+          pagesTotal={status?.pagesTotal ?? 0}
+          detailsFetched={status?.detailsFetched ?? 0}
+          detailsTotal={status?.detailsTotal ?? 0}
           note={status?.note}
         />
       )}

@@ -97,6 +97,17 @@ export interface SearchResultsResponse {
    * opened. It clears again on its own once the page loads.
    */
   note?: string | null;
+  /**
+   * Live progress for the readout. Every one is present on every response, and a
+   * total is 0 until the phase that knows it begins: the page total only exists
+   * once page 1 has reported how many pages there are, and a `detailsTotal` of 0
+   * during enrichment means the property cache already covered every property.
+   */
+  listingCount: number;
+  pagesFetched: number;
+  pagesTotal: number;
+  detailsFetched: number;
+  detailsTotal: number;
   scrapedAt?: number;
   properties?: Property[];
   hiddenCounts?: HiddenCounts;

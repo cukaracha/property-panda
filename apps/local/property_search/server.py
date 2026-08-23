@@ -110,6 +110,15 @@ def get_search_results(jobId: str = ""):
         # What the browser is currently blocked on, e.g. an unsolved challenge. Present
         # only while it is true, so the UI shows it and then stops showing it by itself.
         "note": row.get("note"),
+        # How far through each phase the scrape is, so the readout can count rather than
+        # sit on one label for the whole run. A total is 0 until the phase that knows it
+        # begins -- the page total only exists once page 1 has said how many there are,
+        # and a details total of 0 during enrichment means the cache covered every one.
+        "listingCount": int(row.get("listingCount") or 0),
+        "pagesFetched": int(row.get("pagesFetched") or 0),
+        "pagesTotal": int(row.get("pagesTotal") or 0),
+        "detailsFetched": int(row.get("detailsFetched") or 0),
+        "detailsTotal": int(row.get("detailsTotal") or 0),
     }
 
     if row.get("status") != "succeeded":

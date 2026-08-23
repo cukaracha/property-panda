@@ -164,12 +164,17 @@ class BrowserSession:
             raise FetchError(f"{url}: never rendered {must_contain or 'any content'}")
         return html
 
-    def fetch_many(self, targets: list, must_contain: str = "") -> dict:
+    def fetch_many(self, targets: list, must_contain: str = "", on_progress=None) -> dict:
         """Fetch many URLs across the tabs, returning {key: html} for those that loaded.
 
         `targets` is a list of (key, url). A URL that never came good is simply absent
         from the result rather than raising, because every batch caller here treats
         enrichment as best effort and one dead project page must not fail a whole job.
+
+        `on_progress(done, total)` is called as the batch settles, so a caller can report
+        how far through it is rather than going quiet for the whole batch. A URL counts
+        as done once it is neither queued nor in a tab -- fetched, or out of retries --
+        so a job waiting out a backoff correctly counts as still outstanding.
         """
         pending = deque(
             {"key": key, "url": url, "attempt": 0, "ready_at": 0.0, "asked": False,
@@ -178,14 +183,22 @@ class BrowserSession:
         )
         active = {}
         results = {}
+        total = len(pending)
+        done = 0
+        if on_progress:
+            on_progress(0, total)
 
         while pending or active:
             self._fill_tabs(pending, active)
-            if not active:
+            if active:
+                self._poll_tabs(pending, active, results, must_contain)
+            else:
                 # Everything left is still waiting out a retry backoff.
                 time.sleep(POLL_INTERVAL_SECONDS)
-                continue
-            self._poll_tabs(pending, active, results, must_contain)
+            settled = total - len(pending) - len(active)
+            if on_progress and settled != done:
+                done = settled
+                on_progress(done, total)
 
         return results
 
