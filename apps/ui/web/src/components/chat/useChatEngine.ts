@@ -1,16 +1,14 @@
 /**
- * useChatEngine — the shared AgentCore SSE streaming engine.
+ * useChatEngine — the shared SSE streaming engine for the assistant.
  *
  * Owns the conversation state and the message/reasoning/tool/error/action event
- * routing for a single stateless chat surface, independent of presentation. Both
- * the floating assistant panel (Topic pages) and the full-page Home chat consume
- * this hook, so the StrictMode-safe accumulation pattern (currentContentRef /
- * workflowStepsRef as the per-turn source of truth, finalized via pure top-level
- * setState) lives in exactly one place.
+ * routing for a single chat surface, independent of presentation, so the
+ * StrictMode-safe accumulation pattern (currentContentRef / workflowStepsRef as the
+ * per-turn source of truth, finalized via pure top-level setState) lives in exactly
+ * one place.
  *
- * Grounding sent to the agent is the current topic id (to scope the
- * course_knowledge_base tool). `action` events are ignored here — human-in-the-loop
- * actions are layered on separately.
+ * The grounding sent to the agent is the active page's context and its registered
+ * actions, read non-reactively at send time.
  */
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,14 +27,13 @@ import type {
 
 /**
  * @param persistKey When set, the surface's session id is persisted under this
- * localStorage key so a reload resumes the same AgentCore conversation, and past
- * conversations can be loaded in place via `loadConversation`. Omit for the
- * legacy ephemeral behavior. Distinct surfaces (Home, each Topic panel, the
- * Conversations page) MUST pass distinct keys so they don't collide.
+ * localStorage key so a reload resumes the same conversation, and past
+ * conversations can be loaded in place via `loadConversation`. Omit for ephemeral
+ * behavior. Distinct surfaces MUST pass distinct keys so they don't collide.
  */
 export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
   const { setStatus: setAiModeStatus, openChat, scope, suggestions } = useAiModeStore();
-  const { user, name } = useAuth();
+  const { name } = useAuth();
 
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -44,7 +41,7 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
   const [currentAssistantMessage, setCurrentAssistantMessage] = useState<ChatMessageType | null>(
     null
   );
-  // Active AgentCore session id. Lazy-init from storage (one read) so a persisted
+  // Active chat session id. Lazy-init from storage (one read) so a persisted
   // surface resumes its session; `sessionIdRef` is the non-reactive copy read at
   // send time (never read during render, per react-hooks/refs).
   const [activeSessionId, setActiveSessionId] = useState(
@@ -71,9 +68,9 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
 
   const firstName = name?.split(/\s+/)[0] || name || 'there';
   const greeting =
-    `Hi ${firstName}, I'm **${ASSISTANT_NAME}**, your study assistant` +
-    (scope ? ` for **${scope}**` : '') +
-    '. I can explain concepts, answer questions, and help you dig into the material.';
+    `Hi ${firstName}, I'm **${ASSISTANT_NAME}**` +
+    (scope ? `, your assistant for **${scope}**` : '') +
+    '. Ask me about what is on the page, and I can act on it for you once you approve.';
 
   const handleStreamEvent = (event: AgentStreamEvent) => {
     switch (event.type) {
@@ -211,10 +208,8 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
     openChat();
 
     try {
-      // Read topic id + page context/actions non-reactively at send time so the
-      // open-from-anywhere listener (bound once) always sends the active page's
-      // grounding, not a stale one.
-      const topicId = useAiModeStore.getState().topicId;
+      // Read the page context/actions non-reactively at send time, so a turn always
+      // carries the active page's grounding rather than a stale one.
       const { getFormattedContext, actions } = usePageContextStore.getState();
       const actionMeta = (actions ?? []).map(a => ({
         name: a.name,
@@ -224,9 +219,7 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
       }));
       await invokeAgent({
         prompt,
-        actorId: user?.userId || 'anonymous',
         sessionId: sessionIdRef.current,
-        topicId,
         pageContext: getFormattedContext(),
         actions: actionMeta,
         onEvent: handleStreamEvent,
@@ -325,8 +318,8 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
 
   // Load a past conversation into this surface and continue it in place: replace
   // the thread with the replayed transcript and reuse its session id, so the next
-  // turn rehydrates full history from Memory server-side (nothing is replayed to
-  // the agent). Resets the same transient state handleNewChat does.
+  // turn rehydrates full history server-side (nothing is replayed to the agent from
+  // here). Resets the same transient state handleNewChat does.
   const loadConversation = async (sessionId: string) => {
     if (isTurnActiveRef.current) return;
     setIsRestoring(true);
@@ -357,7 +350,7 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
     }
   };
 
-  // New chat: reset the thread + rotate the session id for fresh AgentCore memory.
+  // New chat: reset the thread + rotate the session id for a fresh transcript.
   const handleNewChat = () => {
     if (isTurnActiveRef.current) return;
     setMessages([]);
@@ -390,24 +383,6 @@ export function useChatEngine({ persistKey }: { persistKey?: string } = {}) {
     }
     // loadConversation is stable enough for this one-shot restore; deliberately
     // bound once so it runs only on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Open-from-anywhere: a plain DOM/UI event (lib/openChat.ts). Opens the panel
-  // and, if a prompt is attached, auto-sends it after the rise animation settles.
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      openChat();
-      const detail = (e as CustomEvent<{ prompt?: string }>).detail;
-      const prompt = detail?.prompt;
-      if (prompt) {
-        setTimeout(() => void runAgentTurn(prompt), 360);
-      }
-    };
-    window.addEventListener('lms:openchat', onOpen);
-    return () => window.removeEventListener('lms:openchat', onOpen);
-    // runAgentTurn/openChat are stable enough for this listener; intentionally
-    // bound once so the timer always uses the latest refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -1,7 +1,7 @@
 /**
  * Listings service - the PropertyGuru scraper's async pipeline (client side).
  *
- * This one talks to the LOCAL scraper server, not the deployed API.
+ * Talks to the local server on this machine.
  *
  * Flow: triggerSearch (202 + jobId) -> poll getSearchResults until the job is
  * succeeded or failed. There is deliberately no separate status endpoint:
@@ -23,12 +23,11 @@ import type {
 } from '../pages/propertySearch/types/listings';
 
 /**
- * The local scraper API (apps/local/property_search). It runs on this machine rather
- * than behind API Gateway because the scrape needs a real, visible browser window: the
- * source sits behind a Cloudflare challenge that only clears for a genuine browser, and
- * that sometimes means a person clicking in it. There is no Authorization header for the
- * same reason there is no Cognito here — the server listens on loopback and serves one
- * person, so `fetch` is used directly rather than the app's authFetch.
+ * The local API (apps/local/property_search). It runs on this machine because the scrape
+ * needs a real, visible browser window: the source sits behind a Cloudflare challenge
+ * that only clears for a genuine browser, and that sometimes means a person clicking in
+ * it. There is no Authorization header because there is nothing to authenticate against:
+ * the server listens on loopback and serves one person.
  */
 const API_URL = import.meta.env.VITE_LISTINGS_API_URL || 'http://localhost:8000';
 

@@ -214,3 +214,87 @@ def clean_hidden(body: dict) -> tuple:
         raise ValueError("label must be a string")
 
     return scope, entity_id, (label or "")[:200]
+
+
+# The page context is a rendered description of one screen, so it is bounded rather
+# than unbounded: a result set of a hundred properties with their unit tables is a
+# few tens of kilobytes, and anything past this is not a page.
+MAX_PAGE_CONTEXT = 200_000
+MAX_PROMPT = 20_000
+MAX_TOKEN = 500
+
+
+def clean_action(raw) -> dict:
+    """Reduce one action definition to the four fields the prompt actually uses.
+
+    The browser sends `display` and `callback` nowhere near this, but the metadata it
+    does send is interpolated into the prompt, so it is rebuilt field by field rather
+    than passed through.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("each action must be an object")
+
+    name = clean_text(raw.get("name"), "action name", 100)
+    if not name:
+        raise ValueError("each action must have a name")
+
+    parameters = raw.get("parameters") or {}
+    if not isinstance(parameters, dict):
+        raise ValueError("action parameters must be an object")
+
+    return {
+        "name": name,
+        "description": clean_text(raw.get("description"), "action description", 1000),
+        "parameters": {
+            str(key): clean_text(value, "action parameter", 500)
+            for key, value in parameters.items()
+        },
+        "example": clean_text(raw.get("example"), "action example", 500),
+    }
+
+
+def build_chat_request(body: dict) -> tuple:
+    """Validate a chat turn, returning (sessionId, prompt, pageContext, actions)."""
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    prompt = body.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt is required")
+    if len(prompt) > MAX_PROMPT:
+        raise ValueError(f"prompt must be {MAX_PROMPT} characters or fewer")
+
+    session_id = clean_text(body.get("sessionId"), "sessionId", 100)
+    if not session_id:
+        raise ValueError("sessionId is required")
+
+    page_context = body.get("pageContext") or ""
+    if not isinstance(page_context, str):
+        raise ValueError("pageContext must be a string")
+    if len(page_context) > MAX_PAGE_CONTEXT:
+        raise ValueError("pageContext is too large")
+
+    raw_actions = body.get("actions") or []
+    if not isinstance(raw_actions, list):
+        raise ValueError("actions must be a list")
+
+    return session_id, prompt.strip(), page_context, [clean_action(a) for a in raw_actions]
+
+
+def clean_token(body: dict) -> str:
+    """Validate a Claude token save. An empty string is a removal, not an error."""
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    token = body.get("token")
+    if token is None:
+        token = ""
+    if not isinstance(token, str):
+        raise ValueError("token must be a string")
+
+    # Whitespace in a pasted token is paste damage from a wrapped terminal line,
+    # never part of the value.
+    token = "".join(token.split())
+    if len(token) > MAX_TOKEN:
+        raise ValueError("token is too long")
+    return token

@@ -6,13 +6,7 @@
 import { create } from 'zustand';
 
 type AiModeStatus =
-  | 'idle'
-  | 'thinking'
-  | 'searching'
-  | 'evaluating'
-  | 'streaming'
-  | 'complete'
-  | 'error';
+  'idle' | 'thinking' | 'searching' | 'evaluating' | 'streaming' | 'complete' | 'error';
 
 interface AiModeStore {
   status: AiModeStatus;
@@ -24,10 +18,10 @@ interface AiModeStore {
   scope?: string;
   /** UI-only "Try asking" chips, shown before the first user turn. Never sent to the agent. */
   suggestions: string[];
-  /** Current topic id (e.g. 'phys2001') for the active page. Unlike scope/suggestions this IS sent to the agent, so it can scope the course_knowledge_base tool. Undefined off unit-scoped pages. */
-  topicId?: string;
-  /** Set the chat presentation (panel subline + suggestion chips) and the current topic id. */
-  setChatUi: (ui: { scope?: string; suggestions?: string[]; topicId?: string }) => void;
+  /** Whether the floating assistant is mounted at all. A page opts in by setting it; off every page that has not. */
+  assistantEnabled: boolean;
+  /** Set the chat presentation (panel subline + suggestion chips) and whether the assistant is offered here. */
+  setChatUi: (ui: { scope?: string; suggestions?: string[]; assistantEnabled?: boolean }) => void;
   toggleChat: () => void;
   openChat: () => void;
   closeChat: () => void;
@@ -41,8 +35,13 @@ export const useAiModeStore = create<AiModeStore>(set => ({
   suggestionViewed: false,
   scope: undefined,
   suggestions: [],
-  topicId: undefined,
-  setChatUi: ui => set({ scope: ui.scope, suggestions: ui.suggestions ?? [], topicId: ui.topicId }),
+  assistantEnabled: false,
+  setChatUi: ui =>
+    set({
+      scope: ui.scope,
+      suggestions: ui.suggestions ?? [],
+      assistantEnabled: ui.assistantEnabled ?? false,
+    }),
   toggleChat: () =>
     set(state => ({
       isChatOpen: !state.isChatOpen,
@@ -57,6 +56,6 @@ export const useAiModeStore = create<AiModeStore>(set => ({
       suggestionViewed: false,
       scope: undefined,
       suggestions: [],
-      topicId: undefined,
+      assistantEnabled: false,
     }),
 }));

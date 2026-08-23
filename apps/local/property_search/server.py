@@ -10,6 +10,14 @@ no rework beyond pointing at this host instead of API Gateway:
     POST   /listings/hidden           -> hide one
     DELETE /listings/hidden/{key}     -> unhide one
 
+It also serves the in-app assistant, which used to be a Bedrock AgentCore runtime the
+browser invoked directly and is now an agent in this process (see `agent/`):
+
+    POST   /chat                          -> SSE stream of {type, content} events
+    GET    /chat/conversations/{sessionId} -> replay one stored conversation
+    GET    /profile/claude-token          -> whether a Claude token is saved
+    PUT    /profile/claude-token          -> save or remove it
+
 The cloud version ran the scrape on an SQS-triggered Lambda because API Gateway gives up
 at 29 seconds. Here the same handoff is a single background thread: the POST returns a
 jobId immediately and the SPA polls, which is what keeps the request alive across a scrape
@@ -22,18 +30,21 @@ browser would either fail to start or have to throw the clearance away.
 There is no authentication: this listens on loopback and serves one person on one machine.
 """
 
+import json
 import os
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import scraper
 import store
 import validation
+from agent import format_prompt, runner, tokens, transcript
 
 # The Vite dev server. Loopback only, and an explicit list rather than "*", so a page on
 # some other site cannot drive this API through a visiting browser.
@@ -57,12 +68,16 @@ app = FastAPI(title="Property search (local)", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
 # max_workers=1 is the concurrency limit described above, not a performance choice.
 _jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scrape")
+
+# HOME and cwd for the `claude` CLI the assistant runs through. Kept inside .data/ so
+# the whole of this app's state is one directory you can delete.
+AGENT_WORKSPACE = os.path.join(store.DATA_DIR, "agent")
 
 
 @app.post("/listings/search", status_code=202)
@@ -199,6 +214,113 @@ def delete_hidden(entity_key: str):
 
     store.delete_hidden(entity_key)
     return {"entityKey": entity_key}
+
+
+# ------------------------------------------------------------------------- chat
+
+
+def _sse(event: dict) -> str:
+    """One SSE frame, in the `data: ` form the SPA's stream reader already parses."""
+    return f"data: {json.dumps(event)}\n\n"
+
+
+async def _chat_events(session_id: str, prompt: str, page_context: str, actions: list):
+    """Run one turn, streaming it out and writing it down as it goes.
+
+    Failures are reported as `error` events on a 200 stream rather than as an HTTP
+    status. By the time anything can go wrong the response has usually started, and a
+    turn that half-succeeded should leave the user with the half they saw plus a
+    reason, not an exception in place of both.
+    """
+    token = tokens.get_token()
+    if not token:
+        yield _sse(
+            {
+                "type": "error",
+                "content": (
+                    "No Claude token is saved, so the assistant cannot answer. "
+                    "Add one on the profile page and ask again."
+                ),
+            }
+        )
+        return
+
+    history = transcript.recent_turns(session_id)
+    enriched = format_prompt.build_enriched_prompt(page_context, actions, prompt, history)
+    recorder = transcript.TurnRecorder()
+
+    try:
+        async for event in runner.stream_turn(enriched, token, AGENT_WORKSPACE):
+            recorder.consume(event)
+            yield _sse(event)
+    except Exception as error:  # noqa: BLE001 - the request boundary must catch everything
+        print(traceback.format_exc(), flush=True)
+        event = {"type": "error", "content": f"{type(error).__name__}: {error}"}
+        recorder.consume(event)
+        yield _sse(event)
+    finally:
+        # In `finally`, not on the success path: a turn the user partly saw -- a closed
+        # tab, a failure mid-answer -- still belongs in the transcript, and the next
+        # turn reads worse without it. Nothing here yields, which is what makes it
+        # legal under the GeneratorExit a disconnect raises.
+        transcript.append(session_id, "user", prompt)
+        if recorder.content or recorder.steps:
+            transcript.append(
+                session_id, "assistant", recorder.content, workflow=recorder.steps
+            )
+
+
+@app.post("/chat")
+async def chat(request: Request):
+    """Answer one message from the assistant panel, streaming as it is written."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        session_id, prompt, page_context, actions = validation.build_chat_request(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StreamingResponse(
+        _chat_events(session_id, prompt, page_context, actions),
+        media_type="text/event-stream",
+        # The dev server sits behind nothing, but a proxy that buffered this would
+        # turn a streamed answer back into one that lands whole.
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/chat/conversations/{session_id}")
+def get_conversation(session_id: str):
+    """Replay one stored conversation. An unknown id is an empty one, not an error."""
+    return {"messages": transcript.load(session_id)}
+
+
+# ---------------------------------------------------------------------- profile
+
+
+@app.get("/profile/claude-token")
+def get_claude_token():
+    """Whether a Claude token is saved, when, and its last four characters."""
+    return tokens.status()
+
+
+@app.put("/profile/claude-token")
+async def put_claude_token(request: Request):
+    """Save the Claude token, or remove it when given an empty one."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        token = validation.clean_token(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return tokens.put_token(token)
 
 
 @app.exception_handler(HTTPException)

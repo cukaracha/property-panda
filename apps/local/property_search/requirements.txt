@@ -1,7 +1,14 @@
 # Local-only dependencies: this app never ships to Lambda, so nothing here is pinned
 # against a runtime's preinstalled versions.
-fastapi==0.115.6
-uvicorn==0.34.0
+# Floors, not pins: claude-agent-sdk brings in `mcp`, which needs starlette 1.x, and
+# fastapi below 0.121 cannot be built on that starlette (its Router rejects the
+# on_startup argument fastapi passes). Pinning the old fastapi here makes the two
+# unresolvable together.
+fastapi>=0.121
+uvicorn>=0.34
 # Selenium drives a real, visible Chrome. 4.x bundles Selenium Manager, which resolves a
 # matching chromedriver on its own, so there is nothing to install by hand.
 selenium==4.27.1
+# The in-app assistant. Drives the `claude` CLI, which run.sh checks for separately:
+# the SDK installs from PyPI but the CLI it shells out to does not come with it.
+claude-agent-sdk

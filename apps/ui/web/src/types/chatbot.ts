@@ -7,12 +7,9 @@
 // `action` events carry a proposed <act> JSON payload. They drive the
 // human-in-the-loop approve/reject flow (see usePageContextStore + useChatEngine).
 //
-// `delta` is a fragment of text as the agent writes it, and `message` is the same
-// text once its block is complete. An agent that streams sends both: display the
-// deltas, store the message. Only the ontology runtime emits deltas today, so every
-// other consumer simply never sees one.
-export type AgentEventType =
-  'reasoning' | 'message' | 'delta' | 'tool' | 'action' | 'status' | 'error';
+// `message` carries prose in fragments as the agent writes it, which useChatEngine
+// accumulates into the answer bubble.
+export type AgentEventType = 'reasoning' | 'message' | 'tool' | 'action' | 'status' | 'error';
 
 export interface AgentStreamEvent {
   type: AgentEventType;

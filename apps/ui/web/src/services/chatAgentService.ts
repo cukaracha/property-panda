@@ -1,34 +1,27 @@
 /**
- * Chat Agent Service - AgentCore SSE Streaming
+ * Chat agent service — SSE streaming from the local assistant.
  *
- * Invokes the Chat Agent via Bedrock AgentCore runtime.
- * Uses HTTPS with Server-Sent Events (SSE) for streaming responses.
- * Authentication via Cognito access token (Bearer auth).
+ * The agent used to be a Bedrock AgentCore runtime the browser invoked directly with
+ * a Cognito access token. It now runs in the local server (apps/local/property_search)
+ * on the Claude subscription token saved on the profile page, so the transport is a
+ * plain `fetch` to loopback with no Authorization header, for the same reason the
+ * listings service has none.
+ *
+ * The event protocol did not move. Every frame is still `data: {type, content}` with
+ * type in reasoning|message|tool|action|status|error, which is what useChatEngine
+ * routes and what types/chatbot.ts describes.
  */
 
-import { getAccessToken, authFetch } from './authUtils';
 import type { AgentStreamEvent, WorkflowStep } from '../types/chatbot';
 
-// Environment configuration
-const AGENTCORE_RUNTIME_ARN = import.meta.env.VITE_AGENTCORE_RUNTIME_ARN;
-
-// REST front door — the read-only past-conversations proxies (list/replay) go
-// through API Gateway (Cognito ID token via authFetch), unlike invokeAgent's
-// access-token Bearer straight to the AgentCore runtime.
-const API_URL = import.meta.env.VITE_API_URL;
-
-// Extract region from Cognito User Pool ID (format: ap-southeast-2_xxx)
-const USER_POOL_ID = import.meta.env.VITE_USER_POOL_ID || '';
-const REGION = USER_POOL_ID.split('_')[0] || 'ap-southeast-2';
+/** The local server, the same host the listings service talks to. */
+const API_URL = import.meta.env.VITE_LISTINGS_API_URL || 'http://localhost:8000';
 
 // --- Types ---
 
 export interface InvokeAgentRequest {
   prompt: string;
-  actorId: string;
   sessionId: string;
-  /** Current topic id (e.g. 'phys2001'), sent so the agent can scope the course_knowledge_base tool. */
-  topicId?: string;
   /** Formatted page context (<page_context>) for the human-in-the-loop assistant. */
   pageContext?: string;
   /** Available page actions (<page_actions>) the agent may propose. Only metadata is sent. */
@@ -48,60 +41,37 @@ export interface InvokeAgentResponse {
   response: string;
 }
 
-/** A past chat session (AgentCore Memory), labelled by its start time. */
-export interface ConversationSummary {
-  sessionId: string;
-  /** ISO-8601 conversation start time. */
-  createdAt: string;
-}
-
 /** One replayed turn of a past conversation. */
 export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  /** Reconstructed thinking-card trace (reasoning + tool steps) for assistant turns. */
+  /** The stored thinking-card trace (reasoning + tool steps) for assistant turns. */
   workflow?: WorkflowStep[];
 }
 
 // --- Public API ---
 
 /**
- * Invoke the Chat Agent via AgentCore runtime.
+ * Run one turn against the local chat agent, streaming its events back.
  *
- * Sends a prompt to the agent and streams back SSE events.
- * The onEvent callback receives structured events in real-time.
- * Returns the full concatenated message-type response when complete.
+ * The onEvent callback receives structured events in real time. Returns the full
+ * concatenated message-type response when the stream completes.
  */
 export async function invokeAgent(request: InvokeAgentRequest): Promise<InvokeAgentResponse> {
-  if (!AGENTCORE_RUNTIME_ARN) {
-    throw new Error('AgentCore Runtime ARN not configured. Please set VITE_AGENTCORE_RUNTIME_ARN.');
-  }
-
-  const accessToken = await getAccessToken();
-  const encodedArn = encodeURIComponent(AGENTCORE_RUNTIME_ARN);
-  const url = `https://bedrock-agentcore.${REGION}.amazonaws.com/runtimes/${encodedArn}/invocations?qualifier=DEFAULT`;
-
-  const response = await fetch(url, {
+  const response = await fetch(`${API_URL}/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': request.sessionId,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prompt: request.prompt,
-      actor_id: request.actorId,
-      session_id: request.sessionId,
-      topic_id: request.topicId ?? '',
-      page_context: request.pageContext ?? '',
+      sessionId: request.sessionId,
+      pageContext: request.pageContext ?? '',
       actions: request.actions ?? [],
-      bearer_token: accessToken,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`AgentCore invocation failed: ${response.status} ${response.statusText}`);
+    throw new Error(`The assistant could not be reached: ${response.status}`);
   }
 
   // Stream SSE response
@@ -152,25 +122,12 @@ export async function invokeAgent(request: InvokeAgentRequest): Promise<InvokeAg
 }
 
 /**
- * List the signed-in user's past chat conversations, newest first. Goes through
- * API Gateway (the browser can't sign the AgentCore data-plane); the actor is
- * derived server-side from the Cognito token, so only the caller's sessions come
- * back.
- */
-export async function listConversations(): Promise<ConversationSummary[]> {
-  const response = await authFetch(`${API_URL}/conversations`);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || 'Failed to list conversations');
-  return data.conversations;
-}
-
-/**
  * Replay one past conversation as an ordered user/assistant transcript. Assistant
- * turns carry a reconstructed workflow (reasoning + tool steps) for the thinking
- * card. A foreign or unknown id yields an empty list.
+ * turns carry the stored workflow (reasoning + tool steps) for the thinking card.
+ * An unknown id yields an empty list.
  */
 export async function getConversation(sessionId: string): Promise<ConversationMessage[]> {
-  const response = await authFetch(`${API_URL}/conversations/${encodeURIComponent(sessionId)}`);
+  const response = await fetch(`${API_URL}/chat/conversations/${encodeURIComponent(sessionId)}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || 'Failed to load conversation');
   return data.messages;

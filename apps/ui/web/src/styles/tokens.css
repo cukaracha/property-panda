@@ -5,7 +5,7 @@
    (samples/design_handoff_learning_assistant/_ds/…/tokens/*).
    Exposed to Tailwind utility namespaces via theme.css
    (@theme inline); consumed directly by the bespoke component CSS
-   (app.css / app-chat.css / app-content.css).
+   (app.css / app-chat.css).
    ============================================================ */
 
 /* Self-hosted Archivo (variable) — the single brand typeface.

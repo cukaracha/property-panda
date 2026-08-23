@@ -1,5 +1,5 @@
 /**
- * Chat — the floating study assistant (Topic pages).
+ * Chat — the floating assistant panel.
  * A thin presentation wrapper over useChatEngine: it adds the open/close panel
  * chrome and renders nothing when the panel is closed. AppLayout renders the
  * <AssistantPill/> launcher when this panel is closed.
@@ -11,8 +11,12 @@ import { AssistantPanel } from '../assistant/AssistantPanel';
 import { AssistantThread } from '../assistant/AssistantThread';
 import { AssistantComposer } from '../assistant/AssistantComposer';
 
+// One assistant, one conversation. The key is fixed rather than derived from the
+// page, so the thread survives a reload and does not fork per surface.
+const CHAT_SESSION_KEY = 'chat:session:properties';
+
 const Chat: React.FC = () => {
-  const { isChatOpen, closeChat, scope, topicId } = useAiModeStore();
+  const { isChatOpen, closeChat, scope } = useAiModeStore();
   const {
     messages,
     currentAssistantMessage,
@@ -28,9 +32,7 @@ const Chat: React.FC = () => {
     handleActionReject,
     greeting,
     suggestions,
-  } = useChatEngine({
-    persistKey: topicId ? `chat:session:topic:${topicId}` : undefined,
-  });
+  } = useChatEngine({ persistKey: CHAT_SESSION_KEY });
 
   if (!isChatOpen) return null;
 

@@ -1,16 +1,17 @@
 #!/bin/bash
 
-# Launch the local property search app: the scraper API and the web app, together.
+# Launch Property Panda: the local API (scraper + assistant) and the web app, together.
 #
 # Everything this starts runs on this machine. The scraper drives a real, visible Chrome
 # window because PropertyGuru sits behind a Cloudflare challenge that only clears for a
-# genuine browser, and sometimes only after you click in it — see
+# genuine browser, and sometimes only after you click in it. The in-app assistant runs on
+# your own Claude subscription through the `claude` CLI — see
 # apps/local/property_search/README.md.
 #
 # Usage:
 #   ./run.sh                Start both services (installing anything missing first)
 #   ./run.sh --reinstall    Rebuild the Python venv and reinstall both dependency trees
-#   ./run.sh --api          Start only the scraper API
+#   ./run.sh --api          Start only the local API
 #   ./run.sh --ui           Start only the web app
 #   ./run.sh --no-open      Start as usual, without opening a browser tab
 
@@ -20,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
 API_DIR="$REPO_ROOT/apps/local/property_search"
 UI_DIR="$REPO_ROOT/apps/ui/web"
+APP_CONFIG="$REPO_ROOT/AppConfig.json"
 
 API_PORT=8000
 UI_PORT=3000
@@ -77,6 +79,15 @@ check_prerequisites() {
 
     if ! command -v uv >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
         fail "Either uv or python3 is required to build the scraper environment."
+    fi
+
+    # claude-agent-sdk installs from PyPI but shells out to this, which does not come
+    # with it. Warned rather than fatal: the scraper works perfectly well without an
+    # assistant, and only the chat panel would fail.
+    if [ "$RUN_API" = true ] && ! command -v claude >/dev/null 2>&1; then
+        warn "the 'claude' CLI was not found, so the assistant will not answer.
+         Install it from https://claude.com/claude-code, then run 'claude setup-token'
+         and save the token on the profile page."
     fi
 
     # Checked here rather than left to Selenium, which reports a missing browser as an
@@ -162,27 +173,32 @@ setup_ui() {
     ensure_env_local
 }
 
-# The SPA is Cognito-gated everywhere else, so without local mode it cannot boot at all:
-# configureAmplify() throws on the missing user pool. The flag is additionally gated on
-# Vite's dev build, so this file can never affect a deployed bundle.
+# Read one string out of AppConfig.json. Kept to a grep so the script needs no jq and
+# no Python of its own; the file is written by hand and has one key per line.
+app_config() {
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$APP_CONFIG" | head -1
+}
+
+# The two display names live in AppConfig.json, which is the one place app identity is
+# configured. Vite only reads VITE_ vars out of a .env file, so they are copied across
+# here rather than imported.
 ensure_env_local() {
     local env_file="$UI_DIR/.env.local"
+    local app_name assistant_name
 
-    if [ ! -f "$env_file" ]; then
-        info "Writing .env.local for local mode"
-        cat > "$env_file" <<ENV
-# Local development against the on-machine property scraper. Gitignored.
-VITE_LOCAL_MODE=true
+    app_name=$(app_config displayName)
+    assistant_name=$(app_config assistantName)
+    [ -n "$app_name" ] || app_name="Property Panda"
+    [ -n "$assistant_name" ] || assistant_name="Panda-chan"
+
+    info "Writing .env.local"
+    cat > "$env_file" <<ENV
+# Written by run.sh from AppConfig.json on every start. Gitignored, so edit
+# AppConfig.json rather than this file.
 VITE_LISTINGS_API_URL=http://localhost:$API_PORT
-VITE_APP_NAME=Property Panda
+VITE_APP_NAME=$app_name
+VITE_ASSISTANT_NAME=$assistant_name
 ENV
-        return
-    fi
-
-    if ! grep -q '^VITE_LOCAL_MODE=true' "$env_file"; then
-        warn "$env_file does not set VITE_LOCAL_MODE=true, so the app will ask you to
-         sign in to Cognito instead of opening straight onto the property search."
-    fi
 }
 
 # ============================================================================
@@ -190,7 +206,7 @@ ENV
 # ============================================================================
 
 start_api() {
-    info "Starting the scraper API on http://localhost:$API_PORT"
+    info "Starting the local API on http://localhost:$API_PORT"
     cd "$API_DIR"
     .venv/bin/python server.py 2>&1 | prefix "${CYAN}[api]${RESET}" &
     API_PID=$!
@@ -288,7 +304,7 @@ main() {
         echo "  ${GREEN}Property search${RESET}  http://localhost:$UI_PORT/properties"
     fi
     if [ "$RUN_API" = true ]; then
-        echo "  ${DIM}Scraper API      http://localhost:$API_PORT${RESET}"
+        echo "  ${DIM}Local API        http://localhost:$API_PORT${RESET}"
     fi
     echo "  ${DIM}Ctrl+C to stop${RESET}"
     echo

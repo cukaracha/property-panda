@@ -60,18 +60,21 @@
   .sidebar-head { display: flex; align-items: center; gap: 6px; padding: 6px 4px 14px; }
   .sidebar-brand { flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px; padding: 0 6px; text-decoration: none; }
 
-  /* Brand mark (JustifyAI) — the wordmark lockup by default, the icon-only mark in
-     the collapsed rail. Both groups carry a light + dark PNG; the swap below shows
-     the one matching the active theme (white on dark, black on light). */
-  .brand-logo { display: inline-flex; align-items: center; }
+  /* Brand mark — the wordmark by default, the initials in the collapsed rail. Set in
+     type rather than shipped as artwork, so it follows APP_NAME and inherits the
+     theme's ink colour instead of needing a light and dark image pair. */
+  .brand-logo {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--sans);
+    font-weight: var(--w-semi);
+    font-size: 18px;
+    letter-spacing: var(--track-tight);
+    color: var(--ink);
+    white-space: nowrap;
+  }
   .brand-logo__word, .brand-logo__mark { display: inline-flex; align-items: center; }
   .brand-logo__mark { display: none; }
-  .brand-logo-img { display: block; flex: none; width: auto; height: 24px; }
-  .brand-logo .is-light { display: none; }
-  .brand-logo .is-dark { display: block; }
-  [data-theme="light"] .brand-logo .is-dark { display: none; }
-  [data-theme="light"] .brand-logo .is-light { display: block; }
-  .sidebar-brand .brand-logo-img { height: 22px; }
   .nav-toggle { width: 34px; height: 34px; flex: none; border-radius: 8px; border: none; background: transparent; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; transition: background .12s, color .12s; }
   .nav-toggle:hover { background: var(--panel-2); color: var(--ink); }
   .nav-toggle:focus-visible { outline: none; box-shadow: var(--ring); }
@@ -93,7 +96,7 @@
   .nav-item.is-active .ni-icon { color: var(--cyan); }
   .nav-item:focus-visible { outline: none; box-shadow: var(--ring); }
 
-  /* collapsible nav group (Knowledge Base): trigger row + nested course links */
+  /* collapsible nav group: trigger row + nested links */
   .nav-group { display: flex; flex-direction: column; gap: 2px; }
   .nav-group__chev { margin-left: auto; display: inline-flex; flex: none; color: var(--ink-4); transform: rotate(-90deg); transition: transform .18s var(--ease); }
   .nav-group__chev.is-open { transform: rotate(0deg); }
@@ -249,7 +252,7 @@
     background: var(--bg-2); box-shadow: var(--shadow-modal); overflow: hidden;
   }
   .auth-brand { position: relative; overflow: hidden; border-right: 1px solid var(--line); padding: 48px 52px; display: flex; flex-direction: column; justify-content: space-between; }
-  .auth-brand .brand-logo-img { height: 30px; }
+  .auth-brand .brand-logo { font-size: 24px; }
   .auth-brand > * { position: relative; z-index: 1; }
   /* texture + glow, borrowed from the deck canvas */
   .auth-brand::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: var(--dot); background-size: var(--dot-size); -webkit-mask-image: var(--dot-mask); mask-image: var(--dot-mask); opacity: 0.6; }
@@ -326,7 +329,6 @@
     /* swap the wordmark lockup for the icon-only mark */
     .nav-collapsed .sidebar-brand .brand-logo__word { display: none; }
     .nav-collapsed .sidebar-brand .brand-logo__mark { display: inline-flex; }
-    .nav-collapsed .sidebar-brand .brand-logo__mark .brand-logo-img { height: 28px; }
 
     .nav-collapsed .nav-item { justify-content: center; padding: 10px; gap: 0; }
     .nav-collapsed .nav-item .ni-label { display: none; }

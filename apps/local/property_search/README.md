@@ -1,9 +1,11 @@
 # Property search (local)
 
-Scrapes PropertyGuru for-sale listings, groups them by property and unit type,
-and serves them to the `Property search` page of the web app.
+The whole backend of Property Panda. It scrapes PropertyGuru for-sale listings,
+groups them by property and unit type, and serves them to the `Property search`
+page of the web app. It also runs the in-app assistant that answers questions
+about what is on that page.
 
-This one runs on your machine rather than in AWS. PropertyGuru sits behind a
+This runs on your machine rather than in the cloud. PropertyGuru sits behind a
 Cloudflare managed challenge: every non-browser client gets a 403, and the
 challenge only clears for a real browser on a real display — sometimes only
 after a person clicks in it. So the scraper drives a visible Chrome window you
@@ -18,10 +20,8 @@ From the repo root:
 ```
 
 That builds anything missing — the Python virtualenv, `npm install`, and an
-`apps/ui/web/.env.local` holding `VITE_LOCAL_MODE=true` (which lets the SPA boot
-without Cognito) and `VITE_LISTINGS_API_URL`. Local mode is additionally gated
-on Vite's dev flag, so a production build drops it whatever that file says.
-Ctrl+C stops both services, and the Chrome the scraper opened with them.
+`apps/ui/web/.env.local` written from `AppConfig.json`. Ctrl+C stops both
+services, and the Chrome the scraper opened with them.
 
 `./run.sh --api` and `./run.sh --ui` start one side on its own, and
 `./run.sh --reinstall` rebuilds both dependency trees.
@@ -32,6 +32,24 @@ To run the two by hand instead:
 cd apps/local/property_search && .venv/bin/python server.py   # 127.0.0.1:8000
 cd apps/ui/web && npm run dev                                 # localhost:3000
 ```
+
+## The assistant
+
+The chat panel on the property search page runs on your own Claude subscription
+through `claude-agent-sdk`, which drives the `claude` CLI. Generate a token with
+`claude setup-token` and paste it on the `/profile` page; it lands in
+`.data/claude_token.json` with mode 0600 and is never sent back to the browser.
+Without one the scraper works as usual and the panel says it needs a token.
+
+Each turn is one `query()` against a fresh CLI process, so everything it knows
+comes from the prompt: the page context and actions the SPA sends, plus the
+conversation replayed out of `.data/chat/{sessionId}.json`. It has `WebSearch`
+and `WebFetch` and nothing else — every filesystem and shell built-in is denied
+by a `PreToolUse` hook, which returns an outright allow or deny so no call ever
+blocks waiting for a permission prompt no one is there to answer.
+
+An action is a proposal. The agent emits one `<act>` block and stops; the panel
+renders Approve and Reject, and the page's own callback only runs on approval.
 
 ## The human verification
 
@@ -85,15 +103,16 @@ project is not re-attempted by every later search.
 Each of these is read from the environment at start-up, so
 `SCRAPE_TABS=2 ./run.sh` is enough to change one.
 
-| Variable                    | Default | What it does                                          |
-| --------------------------- | ------- | ----------------------------------------------------- |
-| `SCRAPE_TABS`               | `4`     | Tabs the session spreads page loads across            |
-| `SCRAPE_DELAY_SECONDS`      | `5`     | Politeness gap per tab, shared out across all of them |
-| `AUTO_SOLVE_SECONDS`        | `30`    | How long a challenge gets before it asks you for help |
-| `MANUAL_SOLVE_SECONDS`      | `300`   | How long it then waits for you                        |
-| `MARKER_GRACE_SECONDS`      | `5`     | Grace before a rendered page counts as the wrong page |
-| `PROPERTY_TTL_SECONDS`      | 30 days | How long a project record stays cached                |
-| `PROPERTY_FAIL_TTL_SECONDS` | 1 day   | How long a project page that failed is left alone     |
+| Variable                    | Default  | What it does                                          |
+| --------------------------- | -------- | ----------------------------------------------------- |
+| `SCRAPE_TABS`               | `4`      | Tabs the session spreads page loads across            |
+| `SCRAPE_DELAY_SECONDS`      | `5`      | Politeness gap per tab, shared out across all of them |
+| `AUTO_SOLVE_SECONDS`        | `30`     | How long a challenge gets before it asks you for help |
+| `MANUAL_SOLVE_SECONDS`      | `300`    | How long it then waits for you                        |
+| `MARKER_GRACE_SECONDS`      | `5`      | Grace before a rendered page counts as the wrong page |
+| `PROPERTY_TTL_SECONDS`      | 30 days  | How long a project record stays cached                |
+| `PROPERTY_FAIL_TTL_SECONDS` | 1 day    | How long a project page that failed is left alone     |
+| `CHAT_MODEL`                | `sonnet` | The model alias the assistant runs on                 |
 
 ## Hiding
 
@@ -111,7 +130,14 @@ back with no re-scrape. The list lives in `.data/hidden.json`.
 | `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup    |
 | `grouping.py`              | listings to properties to unit types to units               |
 | `store.py`                 | Job rows, property cache, hidden list, results (JSON files) |
-| `validation.py`            | Filter validation for a search request                      |
+| `validation.py`            | Request validation for searches, hides and chat turns       |
+| `agent/runner.py`          | The SDK options and the event pipeline for one chat turn    |
+| `agent/stream_map.py`      | SDK messages to the `{type, content}` events the SPA reads  |
+| `agent/act_parser.py`      | Splits proposed `<act>` actions out of the streamed prose   |
+| `agent/format_prompt.py`   | The page context / actions / history / message envelope     |
+| `agent/prompts.json`       | The system prompt and the standing instructions             |
+| `agent/transcript.py`      | Chat history, one JSON file per session                     |
+| `agent/tokens.py`          | The Claude subscription token                               |
 
 Adding another portal means one module under `sources/` and one entry in
 `scraper._SOURCES`; nothing else knows which site the records came from.

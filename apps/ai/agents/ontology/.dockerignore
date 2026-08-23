@@ -1,7 +1,0 @@
-# Trim the build context: the image COPYs only the entrypoint modules, shared/,
-# tools/ and prompts.json. control/ ships as a Lambda zip, not in the image, and
-# statemachine/ is read at deploy time by the IaC, not by the agent.
-control
-statemachine
-**/__pycache__
-**/*.pyc

@@ -4,7 +4,7 @@
 - Do not add comments, docstrings, or type annotations to code you didn't
   change.
 - Prefer editing existing files over creating new ones.
-- Python Lambda functions use Python 3.12.
+- The local server runs on Python 3.12.
 - Strictly forbidden from making architectural decisions without explicit
   approval by the user. If you encounter such issues, briefly describe the issue
   and propose options for the user to choose from.
@@ -14,46 +14,28 @@
 
 # Project Overview
 
-A web application with a React frontend (`apps/ui/web`) and an AWS serverless +
-Bedrock AgentCore backend. The chat agent runs on AgentCore Runtime and reaches
-its tools through an AgentCore MCP Gateway (Lambda tool targets) plus A2A
-subagents; a Bedrock Knowledge Base (S3 Vectors) scopes answers per topic.
+A property search app that runs entirely on one machine. A React frontend
+(`apps/ui/web`) talks to a local FastAPI server (`apps/local/property_search`)
+over loopback. There is no cloud, no authentication, and nothing to deploy.
 
-The infrastructure is defined in **two parity trees** — CDK (`infra/cdk`) and
-Terraform (`infra/terraform`) — split into five stacks/layers: Core
-(auth/secrets), Data (DynamoDB/S3/KB), Ai (AgentCore runtime/gateway/tools), Api
-(API Gateway/Lambdas), and Ui (S3/CloudFront).
+The server does two things. It scrapes PropertyGuru by driving a real, visible
+Chrome window, because the source sits behind a Cloudflare challenge that only
+clears for a genuine browser. And it runs the in-app assistant
+(`apps/local/property_search/agent`) through `claude-agent-sdk`, on the user's
+own Claude subscription token.
 
-Configuration lives in `AppConfig.json` at the project root, loaded via
-`infra/cdk/lib/config.ts` (CDK) and `infra/terraform/locals.tf` (Terraform).
-`region` is required in both loaders (fail-fast, no default) so the two trees
-can never drift.
+App identity lives in `AppConfig.json` at the project root: `run.sh` reads
+`displayName` and `assistantName` from it and writes them into
+`apps/ui/web/.env.local` on every start. Never hardcode either in the app.
 
 # Development Guide
 
-## Infrastructure (both trees)
+## Running
 
-- **Every infrastructure change lands in BOTH `infra/cdk` and
-  `infra/terraform`.** Author the CDK change first, then mirror it in Terraform
-  before the work is "done".
-- The two trees mint identical physical resource names, so **never apply both to
-  the same account + stage** — Terraform smoke-deploys use a distinct `stage`.
-
-## CDK
-
-- Stacks never define AWS resources inline — they only instantiate constructs.
-- Constructs go in domain folders under `infra/cdk/lib/constructs/` (`core/`,
-  `shared/`, `data/`, `ai/`, `api/`, `ui/`).
-- Pass resource references as typed props between stacks/constructs. Never
-  hardcode table names, bucket names, or ARNs.
-- Use CDK grant methods (`table.grantReadData()`, `bucket.grantReadWrite()`)
-  over manual `iam.PolicyStatement`.
-- Environment-specific values live in `AppConfig.json` and are loaded via
-  `infra/cdk/lib/config.ts`. Never hardcode them in stacks or constructs.
-- Resource names use the format `{stage}-{appname}-{purpose}-{type}`, all
-  lowercase. S3 buckets add `-{accountid}-{region}` suffix. Stack names use
-  PascalCase: `{stage}-{appName}-{StackName}`. Use `resourcePrefix` from config
-  for the `{stage}-{appname}` portion.
+`./run.sh` starts both services and opens the app. `--api` and `--ui` start one
+side alone, `--reinstall` rebuilds both dependency trees. Never start a second
+scrape concurrently: Chrome holds an exclusive lock on the profile directory
+that carries the Cloudflare clearance between runs.
 
 ## Web App
 
@@ -63,51 +45,34 @@ can never drift.
   components.
 - A page folder can optionally contain subdirectories for `utils/`, `hooks/`,
   and `types/` when needed.
+- The build is strict: `verbatimModuleSyntax` (so type-only imports need
+  `import type`), `erasableSyntaxOnly`, and `noUnusedLocals`. `npm run build`
+  runs `tsc -b`, so a type error fails it.
 
-## Lambda Functions
+## The local server
 
-- Include a docstring at the top of each Lambda file briefly describing what the
-  function does.
-- `lambda_handler` only parses the request and formats the response, then
-  delegates to `main()`.
-- `main()` acts as the orchestrator — it calls helper/utility functions to
-  execute the workflow. Keep business logic out of the handler.
-- Use the `aws_utils` Lambda layer for standard CORS and OPTIONS handling. Call
-  `lambda_utils.handle_options(event)` at the top of the handler and use
-  `lambda_utils.success_response()` / error helpers for responses.
+- `server.py` holds routes only: it parses the request, delegates, and formats
+  the response. Business logic lives in the modules beside it.
+- Request validation goes in `validation.py`, one function per request shape,
+  raising `ValueError` with a message the SPA can show.
+- Persistence goes through `store.py` (scraper state) or `agent/` (token and
+  transcripts). Both write JSON under `.data/` via a lock plus a temp file and
+  rename, because the API thread and the scrape thread both write there.
+- Errors answer as `{"message": ...}`, which is the shape the SPA's services
+  read.
 
-## Lambda Layers
+## The assistant
 
-Shared layers live under `apps/shared/lambda_layers/`. A layer is a plain
-`python/` tree — **no build step, no committed zip.** The IaC zips the directory
-at deploy time (CDK `Code.fromAsset`, Terraform `archive_file`) and publishes
-the version; consumers resolve its ARN from SSM
-(`/{prefix}/layers/aws-utils-arn`).
-
-```
-<layer_name>/
-└── python/
-    └── <layer_name>/       # importable package
-        ├── __init__.py
-        ├── module1.py
-        └── module2.py
-```
-
-Keep layer modules **zero-dependency** (standard library + `boto3`, which the
-Lambda runtime already provides). The `aws_utils` layer ships `lambda_utils`
-(CORS/OPTIONS + response helpers), `auth_context` (Cognito group/claim
-extraction), and `s3_utils` (presigned URLs).
-
-## APIs
-
-- Lambda functions are organized by domain, with CRUD verb subfolders under
-  `apps/apis/`.
-- Example: `apps/apis/autograder/create/create_autograder.py`.
-
-## Async tools (serverless)
-
-Long-running tools (e.g. the markdown converter) use the async pattern: a
-trigger Lambda returns **202** + enqueues to an SQS FIFO queue (with a DLQ); a
-container-image worker Lambda processes the job and writes status to a DynamoDB
-table; a status endpoint is polled by the frontend (`useSyncPoller`). See
-`apps/ai/tools/markdown_converter/` and `apps/apis/converter/`.
+- The browser and the agent share one event protocol: `{type, content}` with
+  type in `reasoning | message | tool | action | status | error`, described in
+  `apps/ui/web/src/types/chatbot.ts`. Both ends depend on it, so change it in
+  both or not at all.
+- `agent/stream_map.py` maps SDK messages onto that protocol and
+  `agent/act_parser.py` splits proposed `<act>` actions out of the prose. Text
+  is emitted as incremental `message` events, since `useChatEngine` accumulates
+  those and has no `delta` case.
+- Tool events are formatted `name(args)`, which is what `parseTool` in
+  `ReasoningCard.tsx` splits on.
+- A page offers the assistant by calling `setChatUi({ assistantEnabled: true })`
+  and registering its context and actions through `usePageContextStore`. An
+  action is a proposal: nothing runs until the user approves it in the panel.

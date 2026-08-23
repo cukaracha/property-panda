@@ -17,13 +17,13 @@ export interface FileDropzoneProps {
    *  is chosen. */
   hint?: string;
   /** Opt-in multi-file mode: accept many files at once and report the full list
-   *  via onFilesSelect (the parent owns the list/chips). Default off — single-file
-   *  callers (Converter) are unaffected. */
+   *  via onFilesSelect (the parent owns the list/chips). Default off, so single-file
+   *  callers are unaffected. */
   multiple?: boolean;
   onFilesSelect?: (files: File[]) => void;
   /** Lay the target out as a short horizontal bar instead of a tall well. For
-   *  surfaces where the picker is no longer the subject — the ontology corpus
-   *  editor, where the list of chosen documents is. */
+   *  surfaces where the picker is no longer the subject, and the list of chosen
+   *  documents beside it is. */
   compact?: boolean;
 }
 

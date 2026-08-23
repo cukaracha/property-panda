@@ -1,10 +1,8 @@
 /**
- * Per-surface AgentCore session-id persistence.
+ * Per-surface chat session-id persistence.
  *
- * A conversation lives server-side in AgentCore Memory, so the only thing a
- * reload has to recover is which session it was. Both the chat engine and the
- * ontology Ask panel key their own conversation off localStorage this way, which
- * is why these live here rather than in either one.
+ * A conversation lives server-side, keyed by its session id, so the only thing a
+ * reload has to recover is which session it was.
  *
  * Gated on a key so ephemeral surfaces (no key) never touch storage, and wrapped
  * in try/catch because private-mode and quota-exceeded both throw.

@@ -1,15 +1,13 @@
 {
-  "name": "sample-agentic-app",
+  "name": "property-panda",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/ui/web",
-    "infra/cdk"
+    "apps/ui/web"
   ],
   "scripts": {
     "dev": "cd apps/ui/web && npm run dev",
     "build": "cd apps/ui/web && npm run build",
-    "deploy": "./deploy.sh",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "lint:check": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",

@@ -27,7 +27,7 @@ function initialCollapsed(): boolean {
  * an off-canvas drawer behind a hamburger on mobile.
  */
 export default function AppLayout() {
-  const { isChatOpen, openChat, topicId } = useAiModeStore();
+  const { isChatOpen, openChat, assistantEnabled } = useAiModeStore();
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [navOpen, setNavOpen] = useState(false);
 
@@ -67,11 +67,11 @@ export default function AppLayout() {
         </main>
       </div>
 
-      {/* Floating assistant — only on topic-scoped pages, where the agent has a
-          topicId to scope the course knowledge base. Home is a full-page chat of
-          its own, so the floating panel is hidden there. The panel renders when
-          open, the launcher pill when closed; both are position:fixed siblings. */}
-      {topicId && (
+      {/* Floating assistant — only where a page has opted in, since the agent
+          answers from the page context and has nothing to say without one. The
+          panel renders when open, the launcher pill when closed; both are
+          position:fixed siblings. */}
+      {assistantEnabled && (
         <>
           <Chat />
           {!isChatOpen && <AssistantPill onClick={openChat} />}

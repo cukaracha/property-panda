@@ -6,7 +6,6 @@ node_modules/
 # Build outputs
 dist/
 build/
-cdk.out/
 *.d.ts
 
 # Runtime and logs
@@ -47,14 +46,15 @@ pnpm-lock.yaml
 .DS_Store
 Thumbs.db
 
-# AWS CDK
-*.assets.json
-*.template.json
-
-# Lambda layers and packages
-lambda_layer.zip
+# Python
 *.pyc
 __pycache__/
+.venv/
+
+# Local runtime state: scrape results, chat transcripts, the Claude token. Written
+# by the server, never by hand.
+apps/local/property_search/.data/
+apps/local/property_search/.chrome-profile/
 
 # Generated files
 CHANGELOG.md

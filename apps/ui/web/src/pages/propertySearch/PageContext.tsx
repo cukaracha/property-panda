@@ -238,8 +238,8 @@ export function usePropertySearchPageContext(
   useEffect(() => {
     setChatUi({
       scope: 'Property search',
-      topicId: undefined,
       suggestions: SUGGESTIONS,
+      assistantEnabled: true,
     });
   }, [setChatUi]);
 

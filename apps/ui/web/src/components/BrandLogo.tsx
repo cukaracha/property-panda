@@ -1,35 +1,30 @@
+import { APP_NAME } from '../config/app';
 import { cn } from '../lib/utils';
 
 export interface BrandLogoProps {
   className?: string;
 }
 
+/** The app's initials, for the collapsed sidebar rail. */
+function initials(name: string): string {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => word[0]);
+  return (letters.join('') || name.slice(0, 2)).slice(0, 2).toUpperCase();
+}
+
 /**
- * The JustifyAI brand mark. Renders the full wordmark lockup by default and a
- * compact icon-only mark for the collapsed sidebar rail; each group carries a
- * light and dark PNG that the CSS swap in app.css picks from the active
- * `data-theme` (white on dark, black on light), mirroring the ThemeToggle swap.
- * Height is set by the surrounding context (sidebar / auth / loading).
+ * The app wordmark, set in type rather than shipped as artwork, so it follows
+ * APP_NAME and needs no light and dark image pair. The word/mark split is what the
+ * collapsed sidebar rail swaps between (see app.css).
  */
 export function BrandLogo({ className }: BrandLogoProps) {
   return (
     <span className={cn('brand-logo', className)}>
-      <span className='brand-logo__word'>
-        <img
-          className='brand-logo-img is-dark'
-          src='/logo-name/justifyai-logo-name-white.png'
-          alt='JustifyAI'
-        />
-        <img
-          className='brand-logo-img is-light'
-          src='/logo-name/justifyai-logo-name-black.png'
-          alt=''
-          aria-hidden='true'
-        />
-      </span>
+      <span className='brand-logo__word'>{APP_NAME}</span>
       <span className='brand-logo__mark' aria-hidden='true'>
-        <img className='brand-logo-img is-dark' src='/logo-name/Logo-White.png' alt='' />
-        <img className='brand-logo-img is-light' src='/logo-name/Logo-Black.png' alt='' />
+        {initials(APP_NAME)}
       </span>
     </span>
   );

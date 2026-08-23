@@ -25,7 +25,7 @@ interface ClaudeTokenCardProps {
 const stripWhitespace = (value: string) => value.replace(/\s+/g, '');
 
 /**
- * Claude subscription token — the credential every ontology build runs on.
+ * Claude subscription token — the credential every chat turn runs on.
  * The token is write-only: the card shows whether one is saved and its last
  * four characters, never the value itself.
  */
@@ -68,7 +68,7 @@ export default function ClaudeTokenCard({ onNotify }: ClaudeTokenCardProps) {
           <KeyRound size={22} className='text-cyan' />
           <div>
             <CardTitle>Claude subscription token</CardTitle>
-            <CardDescription>Ontology builds run on your own Claude subscription</CardDescription>
+            <CardDescription>The assistant runs on your own Claude subscription</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -89,7 +89,7 @@ export default function ClaudeTokenCard({ onNotify }: ClaudeTokenCardProps) {
           />
           <p className='text-xs text-ink-3'>
             Generate one by running <code>claude setup-token</code> in your terminal. It is stored
-            encrypted and never sent back to the browser.
+            on this machine and never sent back to the browser.
           </p>
           {status?.configured && status.updatedAt && (
             <p className='text-xs text-ink-3'>

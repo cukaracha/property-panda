@@ -1,6 +1,0 @@
-# Build artifacts produced by build_agent.sh (each agent's build/ dir + zip)
-*/build/
-
-# Python bytecode
-__pycache__/
-*.pyc

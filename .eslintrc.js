@@ -54,14 +54,6 @@ module.exports = {
     },
   },
   overrides: [
-    // CDK Infrastructure files
-    {
-      files: ['infra/cdk/**/*.ts'],
-      rules: {
-        'no-console': 'off', // Allow console in CDK constructs
-        '@typescript-eslint/no-explicit-any': 'off', // CDK often uses any types
-      },
-    },
     // Test files
     {
       files: ['**/*.test.{ts,tsx,js,jsx}', '**/*.spec.{ts,tsx,js,jsx}'],
@@ -85,14 +77,11 @@ module.exports = {
     'node_modules/',
     'dist/',
     'build/',
-    'cdk.out/',
     '*.d.ts',
     '.husky/',
     'coverage/',
     // The web app has its own flat ESLint config (eslint.config.js); lint it via
     // its workspace script, not the root legacy config.
     'apps/ui/web/',
-    // Reference sample trees are not part of this app's lint surface.
-    'samples/',
   ],
 };
