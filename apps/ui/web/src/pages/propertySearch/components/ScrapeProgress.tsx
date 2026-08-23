@@ -2,8 +2,8 @@ import { Check, Circle, Hand } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { Spinner } from '../../../components/ui/spinner';
 import { cn } from '../../../lib/utils';
-import type { SearchStatus } from '../types/listings';
-import { PROGRESS_STEPS, STATUS_LABELS } from '../utils/format';
+import type { SearchStatus } from '../../../types/listings';
+import { PROGRESS_STEPS, STATUS_LABELS } from '../../../lib/listingsFormat';
 
 export interface ScrapeProgressProps {
   status: SearchStatus;

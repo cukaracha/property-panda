@@ -19,7 +19,7 @@ import {
   listSavedSearches,
   updateSavedSearch,
 } from '../../../services/listingsService';
-import type { HiddenEntity, SavedSearch, SearchRequest } from '../types/listings';
+import type { HiddenEntity, SavedSearch, SearchRequest } from '../../../types/listings';
 
 export interface SavedSearchesResult {
   savedSearches: SavedSearch[];

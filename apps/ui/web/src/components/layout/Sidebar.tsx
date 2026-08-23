@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Building2, User, PanelLeft } from 'lucide-react';
+import { Building2, Heart, User, PanelLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../BrandLogo';
 import { ThemeToggle } from '../ThemeToggle';
@@ -52,6 +52,12 @@ export default function Sidebar({ onToggleCollapse, onNavigate }: SidebarProps) 
             <Building2 size={18} />
           </span>
           <span className='ni-label'>Property search</span>
+        </NavLink>
+        <NavLink to='/shortlist' className={navItemClass} title='Shortlist' onClick={onNavigate}>
+          <span className='ni-icon'>
+            <Heart size={18} />
+          </span>
+          <span className='ni-label'>Shortlist</span>
         </NavLink>
       </nav>
 

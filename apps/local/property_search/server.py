@@ -11,6 +11,9 @@ no rework beyond pointing at this host instead of API Gateway:
     PUT    /listings/saved-searches/{id} -> replace its name, request and hidden items
     PUT    /listings/saved-searches/{id}/hidden -> replace its hidden items alone
     DELETE /listings/saved-searches/{id} -> forget one
+    GET    /listings/shortlist        -> the shortlisted units, grouped by property
+    POST   /listings/shortlist        -> shortlist one unit, snapshot and all
+    DELETE /listings/shortlist/{id}   -> drop one
 
 It also serves the in-app assistant, which used to be a Bedrock AgentCore runtime the
 browser invoked directly and is now an agent in this process (see `agent/`):
@@ -43,6 +46,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
+import grouping
 import scraper
 import store
 import validation
@@ -234,6 +238,54 @@ def delete_saved_search(search_id: str):
 
     store.delete_saved_search(search_id)
     return {"searchId": search_id}
+
+
+# -------------------------------------------------------------------- shortlist
+
+
+@app.get("/listings/shortlist")
+def get_shortlist():
+    """Every shortlisted unit, grouped into the shape a search result comes back in.
+
+    Grouped here rather than in the browser so the shortlist page renders through the
+    same components the results page does, off the same payload shape.
+    """
+    entries = store.list_shortlist()
+    properties = grouping.group_shortlist(entries)
+    return {
+        "properties": properties,
+        "propertyCount": len(properties),
+        "unitCount": grouping.count_units(properties),
+        # Flat as well as grouped, so the results screen can fill in its hearts without
+        # walking the property tree to find the ids.
+        "listingIds": [entry["listingId"] for entry in entries],
+    }
+
+
+@app.post("/listings/shortlist", status_code=201)
+async def create_shortlist(request: Request):
+    """Shortlist one unit, storing the listing as it stands rather than a reference."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        return store.put_shortlist(validation.clean_shortlist(body))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/listings/shortlist/{listing_id}")
+def delete_shortlist(listing_id: str):
+    """Drop one unit from the shortlist. An id already gone counts as success."""
+    try:
+        listing_id = validation.clean_listing_id(listing_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    store.delete_shortlist(listing_id)
+    return {"listingId": listing_id}
 
 
 # ------------------------------------------------------------------------- chat

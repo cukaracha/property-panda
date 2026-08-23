@@ -5,7 +5,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import SearchFilterFields from './SearchFilterFields';
 import { SAVED_SEARCH_NAME_MAX_LENGTH } from './SaveSearchModal';
-import type { FilterFormState, HiddenEntity } from '../types/listings';
+import type { FilterFormState, HiddenEntity } from '../../../types/listings';
 import { buildSearchRequest } from '../utils/filterOptions';
 
 export interface EditSearchModalProps {

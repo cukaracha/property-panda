@@ -1,7 +1,7 @@
 import { Ruler } from 'lucide-react';
-import Modal from '../../../components/modals/Modal';
-import type { ListingRow } from '../types/listings';
-import { formatCurrency } from '../utils/format';
+import Modal from '../modals/Modal';
+import type { ListingRow } from '../../types/listings';
+import { formatCurrency } from '../../lib/listingsFormat';
 
 interface FloorplanModalProps {
   row: ListingRow | null;

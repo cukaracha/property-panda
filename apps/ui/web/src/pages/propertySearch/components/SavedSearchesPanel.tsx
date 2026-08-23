@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { Card } from '../../../components/ui/card';
 import { Spinner } from '../../../components/ui/spinner';
 import SavedSearchMenu from './SavedSearchMenu';
-import type { SavedSearch } from '../types/listings';
+import type { SavedSearch } from '../../../types/listings';
 import { describeFilters, toFilterForm } from '../utils/filterOptions';
 import { cn } from '../../../lib/utils';
 

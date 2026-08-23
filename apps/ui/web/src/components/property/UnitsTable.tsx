@@ -1,0 +1,120 @@
+import { useState } from 'react';
+import { EyeOff, Heart, Ruler } from 'lucide-react';
+import { Button } from '../ui/button';
+import { cn } from '../../lib/utils';
+import DataTable, { type Column } from '../tables/DataTable';
+import FloorplanModal from './FloorplanModal';
+import type { ListingRow } from '../../types/listings';
+import {
+  formatCurrency,
+  formatNumber,
+  formatPsf,
+  formatSqft,
+  formatText,
+} from '../../lib/listingsFormat';
+
+export interface UnitsTableProps {
+  rows: ListingRow[];
+  shortlistedIds: Set<string>;
+  onToggleShortlist: (row: ListingRow) => void;
+  /** Absent on the shortlist screen, where there is no result set to hide a row from. */
+  onHideUnit?: (row: ListingRow) => void;
+  emptyMessage?: string;
+}
+
+/**
+ * Dense listings table for one property: every unit it has, across every bedroom
+ * count, in one place. Square corners rather than a card radius, since this is
+ * data UI. The row itself opens the listing in a new tab, so the actions cell
+ * carries the buttons that must not do that. Hiding a row is reversible: it drops
+ * out of the render, but the result set keeps it.
+ *
+ * Hiding is dropped rather than disabled when the caller passes no handler, which
+ * is how the shortlist reuses this table without a flag saying which screen it is on.
+ *
+ * The floorplan viewer is held here rather than lifted, because looking at one
+ * touches no store and needs nothing the row does not already carry.
+ */
+export default function UnitsTable({
+  rows,
+  shortlistedIds,
+  onToggleShortlist,
+  onHideUnit,
+  emptyMessage = 'No units to show. They may all be hidden.',
+}: UnitsTableProps) {
+  const [floorplanRow, setFloorplanRow] = useState<ListingRow | null>(null);
+
+  const openListing = (row: ListingRow) => {
+    if (!row.url) return;
+    window.open(row.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const columns: Column<ListingRow>[] = [
+    { key: 'bedrooms', header: 'Bedrooms', render: row => row.unitTypeLabel },
+    { key: 'bathrooms', header: 'Baths', render: row => formatNumber(row.bathrooms) },
+    { key: 'price', header: 'Price', render: row => formatCurrency(row.price) },
+    { key: 'floorAreaSqft', header: 'Floor area', render: row => formatSqft(row.floorAreaSqft) },
+    { key: 'psf', header: 'Price per sqft', render: row => formatPsf(row.psf) },
+    { key: 'listedLabel', header: 'Listed on', render: row => formatText(row.listedLabel) },
+  ];
+
+  return (
+    <div className='border border-line'>
+      <DataTable
+        columns={columns}
+        data={rows}
+        keyExtractor={row => String(row.listingId)}
+        emptyMessage={emptyMessage}
+        onRowClick={openListing}
+        rowLabel={row => `Open listing ${row.listingId}`}
+        actions={row => {
+          const isShortlisted = shortlistedIds.has(String(row.listingId));
+          return (
+            <>
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn('btn-sm', isShortlisted && 'text-cyan')}
+                title={isShortlisted ? 'Remove from the shortlist' : 'Shortlist this unit'}
+                aria-label={
+                  isShortlisted
+                    ? `Remove unit ${row.listingId} from the shortlist`
+                    : `Shortlist unit ${row.listingId}`
+                }
+                aria-pressed={isShortlisted}
+                onClick={() => onToggleShortlist(row)}
+              >
+                <Heart size={16} fill={isShortlisted ? 'currentColor' : 'none'} />
+              </Button>
+              {(row.floorplans?.length ?? 0) > 0 && (
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='btn-sm'
+                  title='View floorplan'
+                  aria-label={`View floorplan for unit ${row.listingId}`}
+                  onClick={() => setFloorplanRow(row)}
+                >
+                  <Ruler size={16} />
+                </Button>
+              )}
+              {onHideUnit && (
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='btn-sm'
+                  title='Hide this unit'
+                  aria-label={`Hide unit ${row.listingId}`}
+                  onClick={() => onHideUnit(row)}
+                >
+                  <EyeOff size={16} />
+                </Button>
+              )}
+            </>
+          );
+        }}
+      />
+      <FloorplanModal row={floorplanRow} onClose={() => setFloorplanRow(null)} />
+    </div>
+  );
+}

@@ -3,6 +3,9 @@ Turn a flat list of listings into the grouped shape the UI renders.
 
 listings -> properties -> unit types (by bedroom count) -> units
 
+The shortlist is regrouped here too. It stores whole listings rather than references,
+so it feeds the same helpers a fresh search result does.
+
 The prototype had no grouping at all: it rendered one flat table keyed by project name,
 which is why two units in the same project could not be compared side by side. Grouping
 on the site's own numeric project id rather than the display name also stops two projects
@@ -28,6 +31,44 @@ def group_listings(listings: list, properties: dict) -> list:
     ]
 
     # Cheapest property first: the entry price is what a buyer scans the list by.
+    grouped.sort(key=lambda p: (p["priceMin"], p["name"]))
+    return grouped
+
+
+def group_shortlist(entries: list) -> list:
+    """Group shortlisted units into the same property shape a search result returns.
+
+    Each entry is a whole listing frozen at the moment it was shortlisted, which is the
+    flat shape _build_unit_types already consumes, so the unit types, the overviews and
+    the unit rows all come out of the helpers a search goes through unchanged.
+
+    The project facts come with the entry rather than from the property cache, because a
+    shortlist outlives both the job that found the unit and the cache row behind it.
+    """
+    buckets = {}
+    for entry in entries:
+        buckets.setdefault(entry.get("propertyId") or "", []).append(entry)
+
+    grouped = []
+    for property_id, items in buckets.items():
+        # The store hands these over newest first, so the newest snapshot is the one
+        # that names the property and describes the project.
+        newest = items[0]
+        prices = [item["price"] for item in items if item.get("price")]
+        grouped.append(
+            {
+                "propertyId": property_id,
+                "name": newest.get("propertyName") or "Unknown property",
+                "priceMin": min(prices) if prices else 0,
+                "unitCount": len(items),
+                "info": newest.get("info") or {},
+                "unitTypes": _build_unit_types(items),
+                # When this property last gained a unit, so the page can show how old
+                # the snapshot it is rendering actually is.
+                "shortlistedAt": newest.get("createdAt"),
+            }
+        )
+
     grouped.sort(key=lambda p: (p["priceMin"], p["name"]))
     return grouped
 

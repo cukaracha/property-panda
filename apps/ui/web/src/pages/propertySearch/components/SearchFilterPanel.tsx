@@ -2,7 +2,7 @@ import { RotateCcw, Search } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import SearchFilterFields from './SearchFilterFields';
-import type { FilterFormState } from '../types/listings';
+import type { FilterFormState } from '../../../types/listings';
 import { DEFAULT_FILTER_FORM } from '../utils/filterOptions';
 
 export interface SearchFilterPanelProps {

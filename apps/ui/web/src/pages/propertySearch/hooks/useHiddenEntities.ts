@@ -15,7 +15,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { updateSavedSearchHidden } from '../../../services/listingsService';
 import { usePropertySearchResultsStore } from '../../../store/usePropertySearchStore';
-import type { HiddenEntity, HiddenScope } from '../types/listings';
+import type { HiddenEntity, HiddenScope } from '../../../types/listings';
 
 export interface HiddenEntitiesResult {
   hidden: HiddenEntity[];

@@ -1,5 +1,5 @@
-import type { PropertyInfo } from '../types/listings';
-import { formatNumber, formatText, formatYear } from '../utils/format';
+import type { PropertyInfo } from '../../types/listings';
+import { formatNumber, formatText, formatYear } from '../../lib/listingsFormat';
 
 export interface PropertyInfoProps {
   info: PropertyInfo;

@@ -14,7 +14,7 @@
 import { useCallback } from 'react';
 import { useSyncPoller } from '../../../hooks/useSyncPoller';
 import { getSearchResults, SEARCH_TERMINAL } from '../../../services/listingsService';
-import type { SearchResultsResponse } from '../types/listings';
+import type { SearchResultsResponse } from '../../../types/listings';
 
 const INITIAL_DELAY_MS = 5000;
 const INTERVAL_MS = 5000;

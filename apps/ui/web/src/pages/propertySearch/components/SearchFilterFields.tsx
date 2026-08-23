@@ -4,7 +4,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { DropdownMenu } from '../../../components/inputs/DropdownMenu';
 import FilterChipGroup from './FilterChipGroup';
-import type { FilterFormState } from '../types/listings';
+import type { FilterFormState } from '../../../types/listings';
 import {
   BATHROOM_OPTIONS,
   BEDROOM_OPTIONS,

@@ -1,18 +1,24 @@
 import { EyeOff, ExternalLink, MapPin } from 'lucide-react';
-import { Card } from '../../../components/ui/card';
-import { Button } from '../../../components/ui/button';
-import { Badge } from '../../../components/ui/badge';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import PropertyInfo from './PropertyInfo';
 import UnitsTable from './UnitsTable';
-import type { ListingRow, Property } from '../types/listings';
-import { formatText } from '../utils/format';
-import { toListingRows } from '../utils/rows';
+import type { ListingRow, Property } from '../../types/listings';
+import { formatText } from '../../lib/listingsFormat';
+import { toListingRows } from '../../lib/listingRows';
 
 export interface PropertyCardProps {
   property: Property;
-  hiddenUnitIds: Set<string>;
-  onHideProperty: (property: Property) => void;
-  onHideUnit: (property: Property, row: ListingRow) => void;
+  shortlistedIds: Set<string>;
+  onToggleShortlist: (property: Property, row: ListingRow) => void;
+  /** Both absent on the shortlist screen, which has no result set to hide anything from. */
+  hiddenUnitIds?: Set<string>;
+  onHideProperty?: (property: Property) => void;
+  onHideUnit?: (property: Property, row: ListingRow) => void;
+  /** A line under the header, for whatever the screen needs to say about this card. */
+  caption?: string;
+  emptyMessage?: string;
 }
 
 /**
@@ -23,15 +29,23 @@ export interface PropertyCardProps {
  * Hidden units drop out at render time and are counted under the table, because
  * a table that is short only because rows are hidden otherwise reads as a
  * property with few units for sale.
+ *
+ * The hide affordances are dropped rather than disabled when the screen passes no
+ * handler, which is how the shortlist renders the same card without a flag saying
+ * which screen it is on.
  */
 export default function PropertyCard({
   property,
+  shortlistedIds,
+  onToggleShortlist,
   hiddenUnitIds,
   onHideProperty,
   onHideUnit,
+  caption,
+  emptyMessage,
 }: PropertyCardProps) {
   const rows = toListingRows(property);
-  const visibleRows = rows.filter(row => !hiddenUnitIds.has(String(row.listingId)));
+  const visibleRows = rows.filter(row => !hiddenUnitIds?.has(String(row.listingId)));
   const hiddenCount = rows.length - visibleRows.length;
 
   return (
@@ -46,6 +60,7 @@ export default function PropertyCard({
             <MapPin size={13} className='text-cyan' />
             {formatText(property.info.address)}
           </p>
+          {caption && <p className='type-ui-caption mt-1'>{caption}</p>}
         </div>
         <div className='flex items-center gap-2'>
           {property.info.projectUrl && (
@@ -59,10 +74,12 @@ export default function PropertyCard({
               View project
             </a>
           )}
-          <Button variant='outline' size='sm' onClick={() => onHideProperty(property)}>
-            <EyeOff size={16} />
-            Hide property
-          </Button>
+          {onHideProperty && (
+            <Button variant='outline' size='sm' onClick={() => onHideProperty(property)}>
+              <EyeOff size={16} />
+              Hide property
+            </Button>
+          )}
         </div>
       </div>
 
@@ -71,7 +88,13 @@ export default function PropertyCard({
       </div>
 
       <div className='mt-4'>
-        <UnitsTable rows={visibleRows} onHideUnit={row => onHideUnit(property, row)} />
+        <UnitsTable
+          rows={visibleRows}
+          shortlistedIds={shortlistedIds}
+          onToggleShortlist={row => onToggleShortlist(property, row)}
+          onHideUnit={onHideUnit && (row => onHideUnit(property, row))}
+          emptyMessage={emptyMessage}
+        />
       </div>
 
       {hiddenCount > 0 && (

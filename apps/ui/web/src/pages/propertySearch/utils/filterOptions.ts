@@ -11,7 +11,7 @@
  * (lease term, availability, tenancy conditions, room type) and to landed homes (land
  * size), because the scraper searches non-landed homes for sale.
  */
-import type { FilterFormState, SearchFilters, SearchRequest } from '../types/listings';
+import type { FilterFormState, SearchFilters, SearchRequest } from '../../../types/listings';
 
 export interface FilterOption {
   value: string;

@@ -13,6 +13,10 @@
  * units it hides, because hiding belongs to the search that turned them up: the
  * page keeps the full result set and filters at render time, so unhiding puts a
  * row straight back without re-running the scrape.
+ *
+ * The shortlist is the opposite arrangement on purpose. It belongs to the app rather
+ * than to a search, so it is one collection of its own, and it stores each unit whole
+ * rather than by id, so it outlives the job that found it.
  */
 import type {
   HiddenEntity,
@@ -22,8 +26,10 @@ import type {
   SearchRequest,
   SearchResultsResponse,
   SearchStatus,
+  ShortlistPayload,
+  ShortlistResponse,
   TriggerSearchResponse,
-} from '../pages/propertySearch/types/listings';
+} from '../types/listings';
 
 /**
  * The local API (apps/local/property_search). It runs on this machine because the scrape
@@ -145,5 +151,37 @@ export async function deleteSavedSearch(searchId: string): Promise<MutationRespo
   );
   const data = await readBody<MutationResponse>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to delete the saved search');
+  return data;
+}
+
+/** Every shortlisted unit, already grouped into the shape a search result returns. */
+export async function listShortlist(): Promise<ShortlistResponse> {
+  const response = await fetch(`${API_URL}/listings/shortlist`);
+  const data = await readBody<ShortlistResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to load the shortlist');
+  return data;
+}
+
+/** Shortlist one unit, sending the listing as it stands rather than a reference. */
+export async function addShortlist(payload: ShortlistPayload): Promise<ShortlistPayload> {
+  const response = await fetch(`${API_URL}/listings/shortlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await readBody<ShortlistPayload>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to shortlist the unit');
+  return data;
+}
+
+/** Drop one unit from the shortlist by its listing id. */
+export async function removeShortlist(listingId: string): Promise<MutationResponse> {
+  const response = await fetch(`${API_URL}/listings/shortlist/${encodeURIComponent(listingId)}`, {
+    method: 'DELETE',
+  });
+  const data = await readBody<MutationResponse>(response);
+  if (!response.ok || !data) {
+    throw new Error(data?.message || 'Failed to remove the unit from the shortlist');
+  }
   return data;
 }

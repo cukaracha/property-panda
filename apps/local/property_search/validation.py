@@ -293,6 +293,135 @@ def clean_search_id(search_id: str) -> str:
     return search_id
 
 
+LISTING_ID_MAX_CHARS = 64
+PROPERTY_ID_MAX_CHARS = 100
+MAX_FLOORPLANS = 20
+
+
+def clean_url(value, field: str, max_chars: int = 500) -> str:
+    """Coerce one URL to a trimmed http or https string, or '' when absent.
+
+    The scheme check is the point. These strings are stored and later rendered as an
+    href or an image source without a scrape in between, so a javascript: or data: value
+    accepted here would be one the page then hands to the browser.
+    """
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    # A URL carries no whitespace, so any that arrived is paste damage or padding.
+    text = "".join(value.split())
+    if len(text) > max_chars:
+        raise ValueError(f"{field} is too long")
+    if not text.startswith(("http://", "https://")):
+        raise ValueError(f"{field} must be an http or https URL")
+    return text
+
+
+def clean_url_list(values, field: str, max_items: int) -> list:
+    """Coerce one repeatable URL field to a list, dropping the empties."""
+    if not values:
+        return []
+    if not isinstance(values, list):
+        raise ValueError(f"{field} must be a list")
+    if len(values) > max_items:
+        raise ValueError(f"{field} has too many values")
+    return [url for url in (clean_url(value, field) for value in values) if url]
+
+
+def clean_listing_id(listing_id) -> str:
+    """Check a listing id, which is the source's own id for one unit.
+
+    It is the shortlist's key and it comes straight back to the SPA, so it is held to
+    the same safe alphabet clean_search_id holds a saved search id to.
+    """
+    if isinstance(listing_id, bool) or not isinstance(listing_id, (int, str, type(None))):
+        raise ValueError("listingId must be a string or a number")
+    text = str(listing_id if listing_id is not None else "").strip()
+    if not text:
+        raise ValueError("listingId is required")
+    if len(text) > LISTING_ID_MAX_CHARS:
+        raise ValueError("listingId is too long")
+    if not text.replace("-", "").replace("_", "").isalnum():
+        raise ValueError("listingId contains an invalid character")
+    return text
+
+
+def clean_property_info(raw) -> dict:
+    """Rebuild the project facts block that rides along with a shortlisted unit.
+
+    Absent facts stay None rather than becoming 0, which is the same distinction
+    grouping._build_property draws: the UI shows a fallback for a missing year, and a
+    zero would read as real data.
+    """
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError("info must be an object")
+
+    enrichment = clean_choice(raw.get("enrichment"), "unavailable", "enrichment")
+    if enrichment not in ("ok", "unavailable"):
+        raise ValueError("enrichment must be ok or unavailable")
+
+    return {
+        "district": clean_text(raw.get("district"), "district", 40),
+        "districtName": clean_text(raw.get("districtName"), "districtName", 100),
+        "regionName": clean_text(raw.get("regionName"), "regionName", 100),
+        "address": clean_text(raw.get("address"), "address", 300),
+        "topYear": clean_int(raw.get("topYear"), "topYear"),
+        "totalUnits": clean_int(raw.get("totalUnits"), "totalUnits"),
+        "floors": clean_int(raw.get("floors"), "floors"),
+        "tenure": clean_text(raw.get("tenure"), "tenure", 100),
+        "developer": clean_text(raw.get("developer"), "developer", 200),
+        "propertyType": clean_text(raw.get("propertyType"), "propertyType", 100),
+        "psfRange": clean_text(raw.get("psfRange"), "psfRange", 100),
+        "projectUrl": clean_url(raw.get("projectUrl"), "projectUrl"),
+        "imageUrl": clean_url(raw.get("imageUrl"), "imageUrl"),
+        "enrichment": enrichment,
+    }
+
+
+def clean_shortlist(body: dict) -> dict:
+    """Validate a shortlisted unit, returning the flat listing record to store.
+
+    The record is rebuilt field by field rather than passed through, which matters more
+    here than anywhere else in this module: a shortlist is read back and rendered
+    without a scrape in between, so this is the only gate between the request body and
+    the page.
+
+    The shape is a flat listing on purpose. It is what grouping._build_unit_types
+    already consumes, so reading the shortlist back regroups it through the same helpers
+    a search result goes through, with no second grouping implementation to keep in step.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    property_id = body.get("propertyId")
+    if isinstance(property_id, int) and not isinstance(property_id, bool):
+        property_id = str(property_id)
+    property_id = clean_text(property_id, "propertyId", PROPERTY_ID_MAX_CHARS)
+    if not property_id:
+        raise ValueError("propertyId is required")
+
+    return {
+        "listingId": clean_listing_id(body.get("listingId")),
+        "propertyId": property_id,
+        "propertyName": clean_text(body.get("propertyName"), "propertyName", 200),
+        "info": clean_property_info(body.get("info")),
+        "bedrooms": clean_int(body.get("bedrooms"), "bedrooms"),
+        "price": clean_int(body.get("price"), "price"),
+        "bathrooms": clean_int(body.get("bathrooms"), "bathrooms"),
+        "floorAreaSqft": clean_int(body.get("floorAreaSqft"), "floorAreaSqft"),
+        "psf": clean_int(body.get("psf"), "psf"),
+        "url": clean_url(body.get("url"), "url"),
+        "listedAt": clean_int(body.get("listedAt"), "listedAt"),
+        "listedLabel": clean_text(body.get("listedLabel"), "listedLabel", 100),
+        "agentName": clean_text(body.get("agentName"), "agentName", 200),
+        "agencyName": clean_text(body.get("agencyName"), "agencyName", 200),
+        "floorplans": clean_url_list(body.get("floorplans"), "floorplans", MAX_FLOORPLANS),
+    }
+
+
 # The page context is a rendered description of one screen, so it is bounded rather
 # than unbounded: a result set of a hundred properties with their unit tables is a
 # few tens of kilobytes, and anything past this is not a page.

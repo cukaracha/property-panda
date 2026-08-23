@@ -1,7 +1,7 @@
 import { Eye } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
-import type { HiddenEntity } from '../types/listings';
+import type { HiddenEntity } from '../../../types/listings';
 
 export interface HiddenPanelProps {
   hidden: HiddenEntity[];

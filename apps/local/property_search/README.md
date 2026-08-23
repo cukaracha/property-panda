@@ -128,24 +128,43 @@ search hides the same things every time it runs, and hiding something in one
 search leaves every other search alone. A search the user has not saved keeps
 its hidden items in the browser until they do.
 
+## Shortlisting
+
+Hearting a unit copies it into `.data/shortlist.json` as it stands at that
+moment, project facts and all. It stores the whole listing rather than a
+reference to one because there would be nothing left to reference: job rows age
+out after a day and take their results with them, and the property cache holds
+project facts only, nothing per unit. So the shortlist is the one thing here
+that survives without a scrape behind it, and `GET /listings/shortlist` regroups
+those snapshots into the same shape a search returns, through the same helpers.
+
+The shortlist belongs to the app rather than to a search, which is deliberately
+the opposite of hiding. Hiding answers "not this one, in this search", so it
+lives in the search. A shortlist answers "these are the ones I like", and which
+search happened to turn a unit up does not come into it.
+
+The cost of a snapshot is that it goes stale: a shortlisted unit's price is
+whatever it was when it was hearted, and it is never re-scraped. The page shows
+when each one was saved so that is visible rather than assumed.
+
 ## Layout
 
-| File                       | What it does                                               |
-| -------------------------- | ---------------------------------------------------------- |
-| `server.py`                | The API the SPA calls, and the background job handoff      |
-| `scraper.py`               | One job end to end: scrape, enrich, group, record          |
-| `browser.py`               | The visible Chrome session and the verification wait       |
-| `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup   |
-| `grouping.py`              | listings to properties to unit types to units              |
-| `store.py`                 | Job rows, property cache, saved searches, results (JSON)   |
-| `validation.py`            | Request validation for searches, saves and chat turns      |
-| `agent/runner.py`          | The SDK options and the event pipeline for one chat turn   |
-| `agent/stream_map.py`      | SDK messages to the `{type, content}` events the SPA reads |
-| `agent/act_parser.py`      | Splits proposed `<act>` actions out of the streamed prose  |
-| `agent/format_prompt.py`   | The page context / actions / history / message envelope    |
-| `agent/prompts.json`       | The system prompt and the standing instructions            |
-| `agent/transcript.py`      | Chat history, one JSON file per session                    |
-| `agent/tokens.py`          | The Claude subscription token                              |
+| File                       | What it does                                                 |
+| -------------------------- | ------------------------------------------------------------ |
+| `server.py`                | The API the SPA calls, and the background job handoff        |
+| `scraper.py`               | One job end to end: scrape, enrich, group, record            |
+| `browser.py`               | The visible Chrome session and the verification wait         |
+| `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup     |
+| `grouping.py`              | listings to properties to unit types to units                |
+| `store.py`                 | Job rows, property cache, saved searches, shortlist, results |
+| `validation.py`            | Request validation for searches, saves, shortlist and chat   |
+| `agent/runner.py`          | The SDK options and the event pipeline for one chat turn     |
+| `agent/stream_map.py`      | SDK messages to the `{type, content}` events the SPA reads   |
+| `agent/act_parser.py`      | Splits proposed `<act>` actions out of the streamed prose    |
+| `agent/format_prompt.py`   | The page context / actions / history / message envelope      |
+| `agent/prompts.json`       | The system prompt and the standing instructions              |
+| `agent/transcript.py`      | Chat history, one JSON file per session                      |
+| `agent/tokens.py`          | The Claude subscription token                                |
 
 Adding another portal means one module under `sources/` and one entry in
 `scraper._SOURCES`; nothing else knows which site the records came from.

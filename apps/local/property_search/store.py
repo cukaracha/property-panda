@@ -1,6 +1,6 @@
 """
-Persistence for the local scraper: the job rows, the property cache, the saved searches
-and the result JSON.
+Persistence for the local scraper: the job rows, the property cache, the saved searches,
+the shortlist and the result JSON.
 
 Everything lives in JSON files under `.data/` next to this module. The cloud version of
 this scraper used DynamoDB for the rows and S3 for the results; running on one machine
@@ -27,6 +27,7 @@ RESULTS_DIR = os.path.join(DATA_DIR, "results")
 JOBS_FILE = os.path.join(DATA_DIR, "jobs.json")
 PROPERTIES_FILE = os.path.join(DATA_DIR, "properties.json")
 SAVED_SEARCHES_FILE = os.path.join(DATA_DIR, "saved_searches.json")
+SHORTLIST_FILE = os.path.join(DATA_DIR, "shortlist.json")
 
 PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 3600)))
 # A project page that would not load is remembered too, but only briefly: the usual
@@ -38,6 +39,8 @@ JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_SECONDS", str(24 * 3600)))
 # Saved searches never expire, so the list is capped instead. Well past what one
 # person keeps, and low enough that the file stays something you can read by hand.
 MAX_SAVED_SEARCHES = 50
+# The shortlist never expires either, for the same reason and with the same answer.
+MAX_SHORTLIST = 200
 
 _lock = threading.Lock()
 
@@ -294,3 +297,47 @@ def delete_saved_search(search_id: str):
         searches = _read(SAVED_SEARCHES_FILE)
         if searches.pop(search_id, None) is not None:
             _write(SAVED_SEARCHES_FILE, searches)
+
+
+# ------------------------------------------------------------------- shortlist
+
+
+def list_shortlist() -> list:
+    """Every shortlisted unit, newest first.
+
+    Each entry is a whole listing frozen at the moment it was hearted, not a reference to
+    one. A job row ages out after JOB_TTL_SECONDS and takes its result file with it, and
+    the property cache holds project facts only, so an id on its own would name a unit
+    nothing left on this machine could describe.
+    """
+    with _lock:
+        entries = _read(SHORTLIST_FILE)
+    return sorted(entries.values(), key=lambda item: item.get("createdAt") or 0, reverse=True)
+
+
+def put_shortlist(entry: dict) -> dict:
+    """Store one unit under its listing id, refusing to grow the list past the cap.
+
+    Re-hearting a unit overwrites it, which refreshes the snapshot. The cap raises rather
+    than evicting the oldest: only the user should decide what leaves their own list.
+    """
+    listing_id = str(entry["listingId"])
+    entry = dict(entry, listingId=listing_id, createdAt=int(time.time()))
+    with _lock:
+        entries = _read(SHORTLIST_FILE)
+        if listing_id not in entries and len(entries) >= MAX_SHORTLIST:
+            raise ValueError(
+                f"Your shortlist already holds {MAX_SHORTLIST} units. "
+                "Remove one before adding another."
+            )
+        entries[listing_id] = entry
+        _write(SHORTLIST_FILE, entries)
+    return entry
+
+
+def delete_shortlist(listing_id: str):
+    """Drop one unit from the shortlist. An id that is already gone counts as success."""
+    with _lock:
+        entries = _read(SHORTLIST_FILE)
+        if entries.pop(str(listing_id), None) is not None:
+            _write(SHORTLIST_FILE, entries)

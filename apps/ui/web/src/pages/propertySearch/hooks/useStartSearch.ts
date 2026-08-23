@@ -10,7 +10,7 @@
  */
 import { useCallback, useState } from 'react';
 import { triggerSearch } from '../../../services/listingsService';
-import type { SearchRequest } from '../types/listings';
+import type { SearchRequest } from '../../../types/listings';
 
 export interface StartSearchResult {
   isStarting: boolean;

@@ -1,5 +1,5 @@
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
-import type { SavedSearch } from '../types/listings';
+import type { SavedSearch } from '../../../types/listings';
 
 export interface DeleteSearchConfirmModalProps {
   search: SavedSearch | null;

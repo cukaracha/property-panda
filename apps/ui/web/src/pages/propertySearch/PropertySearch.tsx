@@ -12,7 +12,7 @@ import {
   usePropertySearchResultsStore,
   usePropertySearchStore,
 } from '../../store/usePropertySearchStore';
-import type { FilterFormState, HiddenEntity, SavedSearch } from './types/listings';
+import type { FilterFormState, HiddenEntity, SavedSearch } from '../../types/listings';
 import { buildSearchRequest, describeFilters, toFilterForm } from './utils/filterOptions';
 
 /**

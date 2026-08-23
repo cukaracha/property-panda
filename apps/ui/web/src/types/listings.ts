@@ -147,6 +147,49 @@ export interface MutationResponse {
   message?: string;
 }
 
+/**
+ * One unit copied onto the shortlist, as it stood when it was hearted.
+ *
+ * The whole listing goes, not a reference to it: search jobs and their results are
+ * pruned after a day, and the results the browser holds live in sessionStorage, so an
+ * id on its own would name a unit nothing left could describe. The trade is that a
+ * shortlisted unit's price is frozen at that moment and never re-scraped.
+ */
+export interface ShortlistPayload {
+  listingId: string;
+  propertyId: string;
+  propertyName: string;
+  info: PropertyInfo;
+  bedrooms: number | null;
+  price: number | null;
+  bathrooms: number | null;
+  floorAreaSqft: number | null;
+  psf: number | null;
+  url: string;
+  listedAt: number | null;
+  listedLabel: string | null;
+  agentName: string | null;
+  agencyName: string | null;
+  floorplans?: string[];
+}
+
+/**
+ * A shortlisted property, regrouped server side into the same shape a search returns
+ * so both screens render it through the same card. `shortlistedAt` is when the
+ * property last gained a unit, which is what dates the snapshot on screen.
+ */
+export interface ShortlistProperty extends Property {
+  shortlistedAt: number | null;
+}
+
+export interface ShortlistResponse {
+  properties: ShortlistProperty[];
+  propertyCount: number;
+  unitCount: number;
+  /** Flat, so the results screen can fill its hearts without walking the tree. */
+  listingIds: string[];
+}
+
 export interface SearchFilters {
   minPrice?: number;
   maxPrice?: number;

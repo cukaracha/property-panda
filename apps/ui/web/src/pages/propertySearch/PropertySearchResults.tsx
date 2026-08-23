@@ -4,7 +4,7 @@ import { ArrowLeft, BookmarkPlus, Eye, EyeOff, Pencil } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import Toast, { type ToastItem } from '../../components/ui/toast';
-import PropertyCard from './components/PropertyCard';
+import PropertyCard from '../../components/property/PropertyCard';
 import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
 import SaveSearchModal from './components/SaveSearchModal';
@@ -12,6 +12,7 @@ import EditSearchModal from './components/EditSearchModal';
 import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
 import { useHiddenEntities } from './hooks/useHiddenEntities';
+import { useShortlist } from '../../hooks/useShortlist';
 import { useSearchProgress } from './hooks/useSearchProgress';
 import { useStartSearch } from './hooks/useStartSearch';
 import { useResultsPageContext } from './PageContext';
@@ -23,10 +24,10 @@ import type {
   ListingRow,
   PendingHide,
   Property,
-} from './types/listings';
+} from '../../types/listings';
 import { buildSearchRequest, describeFilters } from './utils/filterOptions';
-import { formatCurrency } from './utils/format';
-import { resultEntityKeys, toListingRows } from './utils/rows';
+import { formatCurrency } from '../../lib/listingsFormat';
+import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
 
 /**
  * Search results - the scrape while it runs, then the properties it returned.
@@ -79,6 +80,13 @@ export default function PropertySearchResults() {
     hide,
     unhide,
   } = useHiddenEntities();
+
+  const {
+    shortlistedIds,
+    error: shortlistError,
+    add: addToShortlist,
+    remove: removeFromShortlist,
+  } = useShortlist();
 
   const errorMessage = pollError || status?.error || '';
   // A failed job keeps its id, so the failure survives a reload instead of bouncing
@@ -136,6 +144,28 @@ export default function PropertySearchResults() {
       const row = toListingRows(property).find(item => String(item.listingId) === listingId);
       if (row) {
         commitHideUnit(property, row);
+        return;
+      }
+    }
+  };
+
+  // The heart is a toggle, so one handler covers both directions. Adding sends the
+  // whole listing rather than its id, because a shortlist outlives the search that
+  // turned the unit up and there would be nothing left to look the id up against.
+  const toggleShortlist = (property: Property, row: ListingRow) => {
+    const listingId = String(row.listingId);
+    if (shortlistedIds.has(listingId)) {
+      removeFromShortlist(listingId);
+      return;
+    }
+    addToShortlist(property, row);
+  };
+
+  const shortlistUnitById = (listingId: string) => {
+    for (const property of allProperties) {
+      const row = toListingRows(property).find(item => String(item.listingId) === listingId);
+      if (row) {
+        addToShortlist(property, row);
         return;
       }
     }
@@ -206,6 +236,7 @@ export default function PropertySearchResults() {
       properties: visibleProperties,
       hiddenUnitIds,
       hidden: hiddenInResults,
+      shortlistedIds,
       showHidden,
       expired,
       propertyCount: results?.propertyCount ?? 0,
@@ -215,6 +246,8 @@ export default function PropertySearchResults() {
       onHideProperty: hidePropertyById,
       onHideUnit: hideUnitById,
       onUnhide: unhide,
+      onShortlistUnit: shortlistUnitById,
+      onRemoveFromShortlist: removeFromShortlist,
       onBackToSearch: backToSearch,
       onSaveSearch: saveSearch,
     }
@@ -303,6 +336,8 @@ export default function PropertySearchResults() {
               {visibleProperties.length} of {allProperties.length} properties shown.
             </p>
 
+            {shortlistError && <p className='text-sm text-rose'>{shortlistError}</p>}
+
             {results?.truncated && (
               <p className='type-ui-sm text-ink-3'>
                 These results are partial. The scan covered {results.pagesScanned ?? 0} of{' '}
@@ -330,6 +365,8 @@ export default function PropertySearchResults() {
                 <PropertyCard
                   key={`${results?.jobId}-${property.propertyId}`}
                   property={property}
+                  shortlistedIds={shortlistedIds}
+                  onToggleShortlist={toggleShortlist}
                   hiddenUnitIds={hiddenUnitIds}
                   onHideProperty={property => setPendingHide({ scope: 'property', property })}
                   onHideUnit={(property, row) => setPendingHide({ scope: 'unit', property, row })}

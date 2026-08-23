@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { useAiModeStore } from '../../store/useAiModeStore';
 import usePageContextStore, { type PageDescription } from '../../store/usePageContextStore';
+import { useChatSurface } from '../../hooks/useChatSurface';
 import type { Action } from '../../types/chatbot';
-import type { HiddenEntity, Property, SavedSearch, SearchStatus } from './types/listings';
+import type { HiddenEntity, Property, SavedSearch, SearchStatus } from '../../types/listings';
 import {
   formatCurrency,
   formatNumber,
@@ -10,9 +10,9 @@ import {
   formatText,
   formatYear,
   STATUS_LABELS,
-} from './utils/format';
+} from '../../lib/listingsFormat';
 import { describeFilters, toFilterForm } from './utils/filterOptions';
-import { toListingRows } from './utils/rows';
+import { toListingRows } from '../../lib/listingRows';
 
 export type ResultsPhase = 'running' | 'failed' | 'ready';
 
@@ -39,6 +39,7 @@ export interface ResultsView {
   properties: Property[];
   hiddenUnitIds: Set<string>;
   hidden: HiddenEntity[];
+  shortlistedIds: Set<string>;
   showHidden: boolean;
   expired: boolean;
   propertyCount: number;
@@ -49,6 +50,8 @@ export interface ResultsHandlers {
   onHideProperty: (propertyId: string) => void;
   onHideUnit: (listingId: string) => void;
   onUnhide: (entityKey: string) => void;
+  onShortlistUnit: (listingId: string) => void;
+  onRemoveFromShortlist: (listingId: string) => void;
   onBackToSearch: () => void;
   onSaveSearch: (name: string) => void;
 }
@@ -65,36 +68,14 @@ const SEARCH_SUGGESTIONS = [
 
 const RESULTS_SUGGESTIONS = [
   'Which unit here has the lowest price per sqft',
+  'Shortlist the best value unit on this page',
   'Hide the property with the fewest units',
-  'Save this search',
 ];
 
 const RUNNING_SUGGESTIONS = [
   'What is the search doing right now',
   'Take me back to the search filters',
 ];
-
-/**
- * The chat presentation both screens set the same way, and the teardown they
- * both need. Registering a scope per screen is what keeps the assistant panel
- * naming the screen the user is actually on.
- */
-function useChatSurface(scope: string, suggestions: string[]): void {
-  const setChatUi = useAiModeStore(state => state.setChatUi);
-  const reset = useAiModeStore(state => state.reset);
-  const clearPageContext = usePageContextStore(state => state.clearPageContext);
-
-  useEffect(() => {
-    setChatUi({ scope, suggestions, assistantEnabled: true });
-  }, [setChatUi, scope, suggestions]);
-
-  useEffect(() => {
-    return () => {
-      reset();
-      clearPageContext();
-    };
-  }, [reset, clearPageContext]);
-}
 
 // ------------------------------------------------------------------ search screen
 
@@ -217,7 +198,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
   const base = {
     title: 'Search results',
     purpose:
-      'Browse the properties the last PropertyGuru scrape returned, and hide the ones the user does not want to see.',
+      'Browse the properties the last PropertyGuru scrape returned, shortlist the units worth keeping, and hide the ones the user does not want to see.',
   };
 
   const sections = [
@@ -270,7 +251,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
     layout:
       'A back link and a result summary above a list of property cards. Each card shows the project facts and one table of every listing in that property, with no tabs.',
     sections,
-    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. ${describeSavedState(view)}`,
+    notes: `${view.properties.length} of ${view.propertyCount} properties are on screen and ${view.hidden.length} of them are hidden. Every card shows its project facts and all of its listings at once, with a heart on each row. Hiding is reversible: it filters at render time and can be undone from the hidden items panel. Shortlisting is separate from hiding and belongs to the app rather than to this search, so a shortlisted unit is kept on the shortlist screen no matter which search found it. ${describeSavedState(view)}`,
   };
 }
 
@@ -281,7 +262,11 @@ function describeSavedState(view: ResultsView): string {
     : 'These results are not saved. Saving them keeps the filters and the hidden items together under a name.';
 }
 
-function describeProperty(property: Property, hiddenUnitIds: Set<string>): string {
+function describeProperty(
+  property: Property,
+  hiddenUnitIds: Set<string>,
+  shortlistedIds: Set<string>
+): string {
   const info = property.info;
   const facts =
     info.enrichment === 'unavailable'
@@ -293,7 +278,7 @@ function describeProperty(property: Property, hiddenUnitIds: Set<string>): strin
     .slice(0, MAX_UNITS_IN_CONTEXT)
     .map(
       row =>
-        `listingId ${row.listingId}, ${row.unitTypeLabel} at ${formatCurrency(row.price)}, ${formatSqft(row.floorAreaSqft)}, ${formatText(row.listedLabel)}`
+        `listingId ${row.listingId}, ${row.unitTypeLabel} at ${formatCurrency(row.price)}, ${formatSqft(row.floorAreaSqft)}, ${formatText(row.listedLabel)}${shortlistedIds.has(String(row.listingId)) ? ', already shortlisted' : ''}`
     );
   const remainder =
     rows.length > MAX_UNITS_IN_CONTEXT
@@ -343,9 +328,18 @@ function getResultsDetails(view: ResultsView): string {
 
   for (const property of view.properties) {
     lines.push(
-      `- ${property.name} (propertyId ${property.propertyId}), ${describeProperty(property, view.hiddenUnitIds)}`
+      `- ${property.name} (propertyId ${property.propertyId}), ${describeProperty(property, view.hiddenUnitIds, view.shortlistedIds)}`
     );
   }
+
+  const shortlistedHere = view.properties
+    .flatMap(property => toListingRows(property))
+    .filter(row => view.shortlistedIds.has(String(row.listingId)));
+  lines.push(
+    shortlistedHere.length === 0
+      ? 'None of the units on this screen are shortlisted.'
+      : `Shortlisted on this screen: ${shortlistedHere.map(row => String(row.listingId)).join(', ')}.`
+  );
 
   if (view.hidden.length === 0) {
     lines.push('Hidden items in these results: none.');
@@ -396,6 +390,7 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
     view.hidden.length,
     view.savedSearchName ?? '',
     view.properties.map(property => property.propertyId).join(','),
+    [...view.shortlistedIds].sort().join(','),
   ].join('|');
 
   useEffect(() => {
@@ -427,6 +422,24 @@ export function useResultsPageContext(view: ResultsView, handlers: ResultsHandle
         example: '{"name": "unhide_entity", "entityKey": "unit#500133217"}',
         display: params => `Unhide ${params.entityKey}`,
         callback: params => handlersRef.current.onUnhide(params.entityKey),
+      },
+      {
+        name: 'shortlist_unit',
+        description:
+          'Add a single listing to the shortlist, which is the same as clicking the heart on its row. The shortlist is kept for the whole app, so the unit stays on it after this search is gone. Do not use it on a unit already marked as shortlisted.',
+        parameters: { listingId: 'The listingId of the unit to shortlist.' },
+        example: '{"name": "shortlist_unit", "listingId": "500133217"}',
+        display: params => `Shortlist unit ${params.listingId}`,
+        callback: params => handlersRef.current.onShortlistUnit(params.listingId),
+      },
+      {
+        name: 'remove_from_shortlist',
+        description:
+          'Take a listing off the shortlist. Only for units already marked as shortlisted.',
+        parameters: { listingId: 'The listingId of the unit to remove.' },
+        example: '{"name": "remove_from_shortlist", "listingId": "500133217"}',
+        display: params => `Remove unit ${params.listingId} from the shortlist`,
+        callback: params => handlersRef.current.onRemoveFromShortlist(params.listingId),
       },
       {
         name: 'save_search',

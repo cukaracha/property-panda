@@ -1,6 +1,6 @@
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
-import type { PendingHide } from '../types/listings';
-import { formatCurrency } from '../utils/format';
+import type { PendingHide } from '../../../types/listings';
+import { formatCurrency } from '../../../lib/listingsFormat';
 
 interface HideConfirmModalProps {
   pending: PendingHide | null;

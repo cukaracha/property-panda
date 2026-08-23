@@ -23,11 +23,7 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
-import type {
-  FilterFormState,
-  HiddenEntity,
-  SearchResultsResponse,
-} from '../pages/propertySearch/types/listings';
+import type { FilterFormState, HiddenEntity, SearchResultsResponse } from '../types/listings';
 import { DEFAULT_FILTER_FORM } from '../pages/propertySearch/utils/filterOptions';
 
 const RESULTS_KEY = 'property-search-results';
