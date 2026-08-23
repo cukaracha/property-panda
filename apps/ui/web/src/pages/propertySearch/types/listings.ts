@@ -120,6 +120,10 @@ export interface HiddenEntity {
   createdAt: number;
 }
 
+export type PendingHide =
+  | { scope: 'property'; property: Property }
+  | { scope: 'unit'; property: Property; unitType: UnitType; unit: Unit };
+
 export interface ListHiddenResponse {
   hidden: HiddenEntity[];
 }

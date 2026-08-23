@@ -7,10 +7,11 @@ import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
 import PropertyCard from './components/PropertyCard';
 import HiddenPanel from './components/HiddenPanel';
+import HideConfirmModal from './components/HideConfirmModal';
 import { usePropertySearch } from './hooks/usePropertySearch';
 import { useHiddenEntities } from './hooks/useHiddenEntities';
 import { usePropertySearchPageContext, type SearchPhase } from './PageContext';
-import type { FilterFormState, Property, Unit, UnitType } from './types/listings';
+import type { FilterFormState, PendingHide, Property, Unit, UnitType } from './types/listings';
 import { buildSearchRequest, DEFAULT_FILTER_FORM, describeFilters } from './utils/filterOptions';
 import { formatCurrency } from './utils/format';
 
@@ -42,6 +43,7 @@ export default function PropertySearch() {
   const [form, setForm] = useState<FilterFormState>(DEFAULT_FILTER_FORM);
   const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
   const [showHidden, setShowHidden] = useState(false);
+  const [pendingHide, setPendingHide] = useState<PendingHide | null>(null);
 
   const { jobId, status, isStarting, error, startSearch } = usePropertySearch();
   const {
@@ -66,18 +68,28 @@ export default function PropertySearch() {
     startSearch(buildSearchRequest(form));
   };
 
-  const hideProperty = (property: Property) => hide('property', property.propertyId, property.name);
+  const commitHideProperty = (property: Property) =>
+    hide('property', property.propertyId, property.name);
 
-  const hideUnit = (property: Property, unitType: UnitType, unit: Unit) =>
+  const commitHideUnit = (property: Property, unitType: UnitType, unit: Unit) =>
     hide(
       'unit',
       String(unit.listingId),
       `${property.name}, ${unitType.label}, ${formatCurrency(unit.price)}`
     );
 
+  const confirmHide = async () => {
+    if (!pendingHide) return;
+    if (pendingHide.scope === 'property') {
+      await commitHideProperty(pendingHide.property);
+      return;
+    }
+    await commitHideUnit(pendingHide.property, pendingHide.unitType, pendingHide.unit);
+  };
+
   const hidePropertyById = (propertyId: string) => {
     const property = allProperties.find(item => item.propertyId === propertyId);
-    if (property) hideProperty(property);
+    if (property) commitHideProperty(property);
   };
 
   const hideUnitById = (listingId: string) => {
@@ -85,7 +97,7 @@ export default function PropertySearch() {
       for (const unitType of property.unitTypes) {
         const unit = unitType.units.find(item => String(item.listingId) === listingId);
         if (unit) {
-          hideUnit(property, unitType, unit);
+          commitHideUnit(property, unitType, unit);
           return;
         }
       }
@@ -205,8 +217,10 @@ export default function PropertySearch() {
                 key={`${jobId ?? 'none'}-${property.propertyId}`}
                 property={property}
                 hiddenUnitIds={hiddenUnitIds}
-                onHideProperty={hideProperty}
-                onHideUnit={hideUnit}
+                onHideProperty={property => setPendingHide({ scope: 'property', property })}
+                onHideUnit={(property, unitType, unit) =>
+                  setPendingHide({ scope: 'unit', property, unitType, unit })
+                }
                 onTabChange={(propertyId, tabId) =>
                   setActiveTabs(current => ({ ...current, [propertyId]: tabId }))
                 }
@@ -215,6 +229,12 @@ export default function PropertySearch() {
           )}
         </div>
       )}
+
+      <HideConfirmModal
+        pending={pendingHide}
+        onClose={() => setPendingHide(null)}
+        onConfirm={confirmHide}
+      />
     </div>
   );
 }

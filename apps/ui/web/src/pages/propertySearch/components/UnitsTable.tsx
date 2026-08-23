@@ -11,10 +11,16 @@ export interface UnitsTableProps {
 
 /**
  * Dense listings table for one unit type. Square corners rather than a card
- * radius, since this is data UI. Hiding a row is reversible: it drops out of
- * the render, but the result set keeps it.
+ * radius, since this is data UI. The row itself opens the listing in a new tab,
+ * so the trailing icon is only a hint. Hiding a row is reversible: it drops out
+ * of the render, but the result set keeps it.
  */
 export default function UnitsTable({ units, onHideUnit }: UnitsTableProps) {
+  const openListing = (unit: Unit) => {
+    if (!unit.url) return;
+    window.open(unit.url, '_blank', 'noopener,noreferrer');
+  };
+
   const columns: Column<Unit>[] = [
     { key: 'price', header: 'Price', render: unit => formatCurrency(unit.price) },
     { key: 'floorAreaSqft', header: 'Floor area', render: unit => formatSqft(unit.floorAreaSqft) },
@@ -40,18 +46,11 @@ export default function UnitsTable({ units, onHideUnit }: UnitsTableProps) {
         data={units}
         keyExtractor={unit => String(unit.listingId)}
         emptyMessage='No units to show. They may all be hidden.'
+        onRowClick={openListing}
+        rowLabel={unit => `Open listing ${unit.listingId}`}
         actions={unit => (
           <>
-            <a
-              href={unit.url}
-              target='_blank'
-              rel='noreferrer'
-              className='btn btn-ghost btn-icon btn-sm'
-              title='Open the listing'
-              aria-label={`Open listing ${unit.listingId}`}
-            >
-              <ExternalLink size={16} />
-            </a>
+            <ExternalLink size={16} className='text-ink-4' aria-hidden />
             <Button
               variant='ghost'
               size='icon'
