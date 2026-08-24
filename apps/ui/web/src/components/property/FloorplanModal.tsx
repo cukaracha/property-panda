@@ -27,7 +27,7 @@ export default function FloorplanModal({ row, onClose }: FloorplanModalProps) {
       title={plans.length > 1 ? 'Floorplans' : 'Floorplan'}
       description={`${row.unitTypeLabel} at ${formatCurrency(row.price)}`}
       icon={<Ruler size={20} />}
-      iconColor='text-cyan'
+      iconColor='text-brand'
       maxWidth='max-w-[720px]'
     >
       <div className='flex max-h-[70vh] flex-col gap-4 overflow-y-auto'>
@@ -39,7 +39,7 @@ export default function FloorplanModal({ row, onClose }: FloorplanModalProps) {
             <img
               src={src}
               alt={`Floorplan ${index + 1} of ${plans.length} for this ${row.unitTypeLabel} unit`}
-              className='w-full rounded-surface border border-line bg-panel-2'
+              className='w-full rounded-photo border border-line bg-photo'
             />
           </figure>
         ))}

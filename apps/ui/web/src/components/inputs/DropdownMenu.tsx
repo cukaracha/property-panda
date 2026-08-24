@@ -21,7 +21,7 @@ export function DropdownMenu({ className, children, ...props }: DropdownMenuProp
       </select>
       <ChevronDown
         size={16}
-        className='pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-3'
+        className='pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted'
       />
     </div>
   );

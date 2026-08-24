@@ -47,46 +47,49 @@ export default function Shortlist() {
   // it down and leave a strip of page uncovered.
   return (
     <>
-      <div className='mx-auto max-w-5xl space-y-5 p-6'>
-        <div>
-          <h1 className='type-ui-h2 text-ink'>Shortlist</h1>
-          <p className='type-ui-caption mt-1'>
-            {unitCount} {unitCount === 1 ? 'unit' : 'units'} across {propertyCount}{' '}
-            {propertyCount === 1 ? 'property' : 'properties'}.
-          </p>
-        </div>
-
-        {error && <p className='text-sm text-rose'>{error}</p>}
-
-        {isLoading ? (
-          <Card className='flex items-center justify-center p-10'>
-            <Spinner />
-          </Card>
-        ) : properties.length === 0 ? (
-          <Card className='p-10 text-center'>
-            <p className='type-ui-title text-ink'>Nothing shortlisted yet</p>
-            <p className='type-ui-sm mt-1 text-ink-3'>
-              Run a search and click the heart on any unit to keep it here.
+      <div className='page-scroll'>
+        <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
+          <div>
+            <p className='type-ui-eyebrow font-mono'>Kept for good</p>
+            <h1 className='type-ui-h1 mt-1 text-strong'>Shortlist</h1>
+            <p className='type-ui-caption mt-1'>
+              {unitCount} {unitCount === 1 ? 'unit' : 'units'} across {propertyCount}{' '}
+              {propertyCount === 1 ? 'property' : 'properties'}.
             </p>
-            <Link to='/search' className='btn btn-secondary btn-sm mt-4'>
-              <Heart size={16} />
-              Go to the property search
-            </Link>
-          </Card>
-        ) : (
-          <div className='space-y-4'>
-            {properties.map(property => (
-              <PropertyCard
-                key={property.propertyId}
-                property={property}
-                shortlistedIds={shortlistedIds}
-                onToggleShortlist={(property, row) => setPendingUnshortlist({ property, row })}
-                caption={formatSavedOn(property.shortlistedAt)}
-                emptyMessage='No units left in this property.'
-              />
-            ))}
           </div>
-        )}
+
+          {error && <p className='text-sm text-danger'>{error}</p>}
+
+          {isLoading ? (
+            <Card className='flex items-center justify-center p-10'>
+              <Spinner />
+            </Card>
+          ) : properties.length === 0 ? (
+            <Card className='p-10 text-center'>
+              <p className='type-ui-title text-strong'>Nothing shortlisted yet</p>
+              <p className='type-ui-sm mt-1 text-muted'>
+                Run a search and click the heart on any unit to keep it here.
+              </p>
+              <Link to='/search' className='btn btn-secondary btn-sm mt-4'>
+                <Heart size={16} />
+                Go to the property search
+              </Link>
+            </Card>
+          ) : (
+            <div className='space-y-4'>
+              {properties.map(property => (
+                <PropertyCard
+                  key={property.propertyId}
+                  property={property}
+                  shortlistedIds={shortlistedIds}
+                  onToggleShortlist={(property, row) => setPendingUnshortlist({ property, row })}
+                  caption={formatSavedOn(property.shortlistedAt)}
+                  emptyMessage='No units left in this property.'
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <UnshortlistConfirmModal

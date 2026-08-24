@@ -2,10 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96x96.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#050709" />
+    <meta name="theme-color" content="#FAF7F1" />
     <!-- No-flash theme: apply the persisted theme to <html data-theme> before the
          first paint. The 'app-theme' key MUST match APP_THEME_KEY in
          src/config/app.ts and the useTheme hook. Default is light. -->
@@ -19,8 +20,10 @@
         }
       })();
     </script>
-    <!-- The typeface (Archivo variable) is self-hosted via
-         src/styles/tokens.css — no external font request. -->
+    <!-- The three typefaces (Bricolage Grotesque, Plus Jakarta Sans, IBM Plex
+         Mono) are self-hosted via src/styles/tokens.css — no external font
+         request, and Vite fingerprints them, so no preload can name them
+         here without going stale on the next build. -->
     <title>Property Panda</title>
   </head>
   <body>

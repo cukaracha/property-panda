@@ -48,6 +48,11 @@ export interface PropertyCardProps {
  * The thumbnail is the project's own hero image, straight from the source CDN. A good
  * number of properties carry no image at all and any of the rest can fail to load, so
  * the fallback tile is a normal state of the card rather than an error case.
+ *
+ * The name and its property type badge sit on one nowrap row, the name free to
+ * shrink and wrap inside itself. Letting the row wrap instead dropped the badge
+ * onto its own line at the widths where names are longest, which is exactly where
+ * the type is worth reading.
  */
 export default function PropertyCard({
   property,
@@ -68,7 +73,7 @@ export default function PropertyCard({
   const hiddenCount = rows.length - visibleRows.length;
 
   return (
-    <Card className='p-5'>
+    <Card className='p-5 transition-shadow hover:shadow-md'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         {property.info.imageUrl && !imageFailed ? (
           <img
@@ -76,20 +81,22 @@ export default function PropertyCard({
             alt=''
             loading='lazy'
             onError={() => setImageFailed(true)}
-            className='h-16 w-16 shrink-0 rounded-surface border border-line bg-panel-2 object-cover sm:h-24 sm:w-24'
+            className='h-16 w-16 shrink-0 rounded-photo border border-line bg-photo object-cover sm:h-24 sm:w-24'
           />
         ) : (
-          <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-surface border border-line bg-panel-2 sm:h-24 sm:w-24'>
-            <Building2 size={24} className='text-ink-4' />
+          <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-photo border border-line bg-sunken sm:h-24 sm:w-24'>
+            <Building2 size={24} className='text-subtle' />
           </div>
         )}
         <div className='min-w-0 flex-1'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <h2 className='type-ui-title text-ink'>{property.name}</h2>
-            {property.info.propertyType && <Badge>{property.info.propertyType}</Badge>}
+          <div className='flex flex-nowrap items-center gap-2'>
+            <h2 className='type-ui-title min-w-0 break-words text-strong'>{property.name}</h2>
+            {property.info.propertyType && (
+              <Badge className='shrink-0'>{property.info.propertyType}</Badge>
+            )}
           </div>
           <p className='type-ui-caption mt-1 flex items-center gap-1.5'>
-            <MapPin size={13} className='text-cyan' />
+            <MapPin size={13} className='text-brand' />
             {formatText(property.info.address)}
           </p>
           {caption && <p className='type-ui-caption mt-1'>{caption}</p>}
@@ -108,19 +115,27 @@ export default function PropertyCard({
           )}
           {onToggleBookmark && (
             <Button
-              variant='outline'
-              size='sm'
-              className={cn(isBookmarked && 'text-cyan')}
+              variant='ghost'
+              size='icon'
+              className={cn(
+                'btn-sm hover:bg-brand-subtle hover:text-brand',
+                isBookmarked && 'text-brand'
+              )}
               title={isBookmarked ? 'Remove the bookmark' : 'Pin this property to the top'}
+              aria-label={isBookmarked ? 'Remove the bookmark' : 'Pin this property to the top'}
               aria-pressed={isBookmarked}
               onClick={() => onToggleBookmark(property)}
             >
               <Bookmark size={16} fill={isBookmarked ? 'currentColor' : 'none'} />
-              {isBookmarked ? 'Bookmarked' : 'Bookmark'}
             </Button>
           )}
           {onHideProperty && (
-            <Button variant='outline' size='sm' onClick={() => onHideProperty(property)}>
+            <Button
+              variant='outline'
+              size='sm'
+              className='hover:bg-danger-subtle hover:text-danger'
+              onClick={() => onHideProperty(property)}
+            >
               <EyeOff size={16} />
               Hide property
             </Button>

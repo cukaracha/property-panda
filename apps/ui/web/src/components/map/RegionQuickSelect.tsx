@@ -14,8 +14,9 @@ export interface RegionQuickSelectProps {
  * a modifier key nobody discovers.
  *
  * Each button is tri-state. Its own districts fully selected means the next click clears
- * them, so the button undoes itself; partly selected renders differently and completes the
- * set rather than clearing it, which is the reading that loses no work.
+ * them, so the button undoes itself; partly selected carries a dashed border and the
+ * count in brackets, and completes the set rather than clearing it, which is the reading
+ * that loses no work.
  */
 export default function RegionQuickSelect({ selected, onChange }: RegionQuickSelectProps) {
   const chosen = new Set(selected);
@@ -49,10 +50,10 @@ export default function RegionQuickSelect({ selected, onChange }: RegionQuickSel
             title={region.title}
             aria-pressed={isFull}
             className={cn(
-              'rounded-control border px-2.5 py-1 text-xs transition-colors',
-              isFull && 'border-accent-line bg-accent-soft text-cyan',
-              isPartial && 'border-accent-line text-ink-2',
-              !count && 'border-line text-ink-3 hover:text-ink'
+              'rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors',
+              isFull && 'border-line-brand bg-brand-subtle text-brand',
+              isPartial && 'border-dashed border-line-brand text-body',
+              !count && 'border-line text-muted hover:bg-sunken hover:text-strong'
             )}
             onClick={() => toggleRegion(region.districts)}
           >
@@ -64,7 +65,7 @@ export default function RegionQuickSelect({ selected, onChange }: RegionQuickSel
 
       <button
         type='button'
-        className='rounded-control border border-line px-2.5 py-1 text-xs text-ink-3 transition-colors hover:text-ink'
+        className='rounded-pill border border-line px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:bg-sunken hover:text-strong'
         onClick={() =>
           onChange(allSelected ? [] : DISTRICT_REGIONS.flatMap(region => region.districts).sort())
         }

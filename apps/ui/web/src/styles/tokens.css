@@ -1,125 +1,343 @@
 /* ============================================================
-   "Measured" — design tokens (dark)
+   Property Panda — design tokens (light)
    Raw :root custom properties: the single source of truth for the
-   Learning Assistant brand. Ported from the design handoff
-   (samples/design_handoff_learning_assistant/_ds/…/tokens/*).
+   brand. Ported from the design handoff
+   (samples/redesign/design_handoff_property_panda/prototype/_ds/…/tokens/*).
    Exposed to Tailwind utility namespaces via theme.css
    (@theme inline); consumed directly by the bespoke component CSS
    (app.css / app-chat.css).
+
+   Light is the default and lives here. themes.css carries the dark
+   counterpart and loads after this file (see index.css).
    ============================================================ */
 
-/* Self-hosted Archivo (variable) — the single brand typeface.
-   No Google Fonts request; one woff2 covers the whole weight range. */
+/* Self-hosted webfonts — no external request, the app runs offline.
+   Bricolage Grotesque carries voice (headlines, prices, wordmark).
+   Plus Jakarta Sans carries everything a person actually reads.
+   IBM Plex Mono carries anything a person might verify: listing ids,
+   dates, districts, page counts. Latin subsets only. */
 @font-face {
-  font-family: 'Archivo';
+  font-family: 'Bricolage Grotesque';
   font-style: normal;
-  font-weight: 100 900;
-  font-stretch: 62.5% 125%;
+  font-weight: 400 800;
+  font-stretch: 100%;
   font-display: swap;
-  src: url('../assets/fonts/archivo-variable.woff2') format('woff2');
+  src: url('../assets/fonts/bricolage-grotesque-variable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/plus-jakarta-sans-variable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/plus-jakarta-sans-italic-variable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-600.woff2') format('woff2');
 }
 
 :root {
-  /* ---- canvas & surfaces (cool near-black, never pure #000) ---- */
-  --bg:   #050709;
-  --bg-2: #090c10;
+  color-scheme: light;
 
-  /* ---- ink ramp (near-white -> muted) ---- */
-  --ink:   #f3f6f7;
-  --ink-2: #aab3b8;
-  --ink-3: #6c767c;
-  --ink-4: #454d52;
+  /* ---- Stone: warm neutral spine. Every grey in the product is warm. ---- */
+  --stone-0: #ffffff;
+  --stone-25: #fcfaf6;
+  --stone-50: #f7f3ec;
+  --stone-100: #efeae1;
+  --stone-200: #e3dcd0;
+  --stone-300: #cfc6b7;
+  --stone-400: #aba192;
+  --stone-500: #847b6c;
+  --stone-600: #635c51;
+  --stone-700: #48423a;
+  --stone-800: #2e2a25;
+  --stone-900: #1a1815;
+  --stone-950: #100f0d;
+  --paper: #faf7f1;
 
-  /* ---- hairlines & panels (white at low alpha, sit on the canvas) ---- */
-  --line:    rgba(255, 255, 255, 0.10);
-  --line-2:  rgba(255, 255, 255, 0.06);
-  --panel:   rgba(255, 255, 255, 0.022);
-  --panel-2: rgba(255, 255, 255, 0.04);
+  /* ---- Bamboo: the primary. The one action colour. ----
+     Regenerated from the brief's baked accent #3F7D2A rather than the
+     bundle's shipped #17734F: the handoff's own accent pipeline owns the
+     whole ramp, so every step and every contrast pair follows the hue. */
+  --bamboo-50: #f1f5f0;
+  --bamboo-100: #dde8d9;
+  --bamboo-200: #bad3b1;
+  --bamboo-300: #8fbc80;
+  --bamboo-400: #5fa348;
+  --bamboo-500: #498933;
+  --bamboo-600: #3f7d2a;
+  --bamboo-700: #316320;
+  --bamboo-800: #254c18;
+  --bamboo-900: #1a3511;
 
-  /* ---- brand family (teal -> cyan -> blue -> indigo, one warm rose) ---- */
-  --cyan:   #7fe3e3;   /* the single product accent */
-  --teal:   #38b2ad;
-  --blue:   #5f9fdd;
-  --indigo: #7d8fe0;
-  --rose:   #d98a9e;   /* reserved for urgency / risk only */
+  /* ---- Clay: the accent. New listings, human warmth. Never a CTA. ---- */
+  --clay-50: #fdf3ed;
+  --clay-100: #fae2d4;
+  --clay-200: #f4c4a8;
+  --clay-300: #eda37b;
+  --clay-400: #e5854f;
+  --clay-500: #d96c36;
+  --clay-600: #b85427;
+  --clay-700: #93411e;
 
-  /* ---- semantic aliases ---- */
-  --accent:      var(--cyan);
-  --accent-ink:  #0a1416;   /* text on a cyan fill */
-  --accent-soft: color-mix(in srgb, var(--cyan) 11%, transparent);
-  --accent-line: color-mix(in srgb, var(--cyan) 34%, transparent);
-  --rose-soft:   color-mix(in srgb, var(--rose) 11%, transparent);
-  --rose-line:   color-mix(in srgb, var(--rose) 36%, transparent);
-  --presence:    #46c88a;   /* assistant presence dot */
+  /* ---- Sky: maps, data, informational only. ---- */
+  --sky-50: #edf4fa;
+  --sky-100: #d5e6f4;
+  --sky-300: #8fb9da;
+  --sky-500: #2f6fa8;
+  --sky-600: #255a8a;
 
-  /* ---- signature gradient (rationed: one hero moment per view) ---- */
-  --grad:      linear-gradient(104deg, #eafafa 0%, #7fe3e3 38%, #5f9fdd 92%);
-  --grad-soft: linear-gradient(104deg, #7fe3e3, #5f9fdd);
+  /* ---- Amber: caution. ---- */
+  --amber-50: #fdf6e4;
+  --amber-100: #fbeecb;
+  --amber-400: #efb53a;
+  --amber-500: #c98a15;
+  --amber-600: #9e6b0e;
 
-  /* ---- dot-grid texture + mask (auth brand panel) ---- */
-  --dot:      radial-gradient(rgba(255, 255, 255, 0.05) 1.3px, transparent 1.4px);
-  --dot-size: 30px 30px;
-  --dot-mask: radial-gradient(120% 70% at 62% -8%, #000 0%, transparent 58%);
+  /* ---- Rose: errors, destructive. ---- */
+  --rose-50: #fbedeb;
+  --rose-100: #f6d8d3;
+  --rose-400: #d46a5c;
+  --rose-500: #b23a2e;
+  --rose-600: #8f2c22;
 
-  /* ---- typography (single family: Archivo; system mono) ---- */
-  --sans: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
-  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
-  /* legacy aliases kept live for shared components */
-  --font-display: var(--sans);
-  --font-body:    var(--sans);
-  --font-mono:    var(--mono);
+  /* ---- Surfaces ---- */
+  --surface-page: var(--paper);
+  --surface-card: var(--stone-0);
+  --surface-sunken: var(--stone-50);
+  --surface-raised: var(--stone-0);
+  --surface-inverse: var(--stone-900);
+  --surface-brand: var(--bamboo-600);
+  --surface-brand-subtle: var(--bamboo-50);
+  --surface-accent-subtle: var(--clay-50);
+  --surface-info-subtle: var(--sky-50);
+  --surface-warning-subtle: var(--amber-50);
+  --surface-danger-subtle: var(--rose-50);
+  --surface-overlay: rgba(26, 24, 21, 0.52);
+  --surface-glass: rgba(250, 247, 241, 0.82);
+  --surface-photo: var(--stone-200);
 
-  --w-regular: 400;
-  --w-medium:  500;
-  --w-semi:    600;   /* the workhorse weight */
-  --w-bold:    700;
+  /* ---- Text ----
+     --text-muted / --text-subtle sit one step darker than the bundle
+     ships them: as shipped they measure 3.9:1 and 2.6:1 on paper. */
+  --text-strong: var(--stone-900);
+  --text-body: var(--stone-700);
+  --text-muted: var(--stone-600);
+  --text-subtle: var(--stone-500);
+  --text-inverse: var(--paper);
+  --text-inverse-muted: rgba(250, 247, 241, 0.72);
+  --text-brand: var(--bamboo-700);
+  --text-accent: var(--clay-600);
+  --text-danger: var(--rose-500);
+  --text-link: var(--bamboo-700);
+  --text-link-hover: var(--bamboo-800);
 
-  /* app-scale type ramp (15px base inside .app / .auth) */
+  /* ---- Borders ---- */
+  --border-subtle: var(--stone-200);
+  --border-default: var(--stone-300);
+  --border-strong: var(--stone-400);
+  --border-inverse: rgba(250, 247, 241, 0.22);
+  --border-brand: var(--bamboo-400);
+  --border-focus: var(--bamboo-400);
+
+  /* ---- Actions ---- */
+  --action-primary-bg: var(--bamboo-600);
+  --action-primary-bg-hover: var(--bamboo-700);
+  --action-primary-bg-active: var(--bamboo-800);
+  --action-primary-text: #ffffff;
+  --action-secondary-bg: var(--stone-0);
+  --action-secondary-bg-hover: var(--stone-50);
+  --action-secondary-bg-active: var(--stone-100);
+  --action-secondary-text: var(--stone-900);
+  --action-secondary-border: var(--stone-300);
+  --action-ghost-bg-hover: var(--stone-100);
+  --action-ghost-text: var(--stone-700);
+  --action-inverse-bg: var(--stone-900);
+  --action-inverse-text: var(--paper);
+  --action-danger-bg: var(--rose-500);
+  --action-danger-bg-hover: var(--rose-600);
+  --action-danger-text: #ffffff;
+  --action-disabled-bg: var(--stone-100);
+  --action-disabled-text: var(--stone-400);
+
+  /* ---- Status ---- */
+  --status-success-fg: var(--bamboo-700);
+  --status-success-bg: var(--bamboo-50);
+  --status-info-fg: var(--sky-600);
+  --status-info-bg: var(--sky-50);
+  --status-warning-fg: var(--amber-600);
+  --status-warning-bg: var(--amber-50);
+  --status-danger-fg: var(--rose-600);
+  --status-danger-bg: var(--rose-50);
+  --status-new-fg: var(--clay-700);
+  --status-new-bg: var(--clay-100);
+
+  /* ---- District map: the three fill states. App-level, not shipped by
+     the design system. Derived from the ramps so they theme for free. ---- */
+  --pp-map-fill: var(--stone-100);
+  --pp-map-fill-hover: var(--stone-200);
+  --pp-map-sel: var(--bamboo-100);
+
+  /* ---- Typography ---- */
+  --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-body: var(--font-sans);
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+  --text-5xl: 48px;
+  --text-6xl: 62px;
+  --text-7xl: 80px;
+
+  /* app-scale ramp used by the .type-ui-* roles in app.css */
   --t-ui-2xs: 11px;
-  --t-ui-xs:  12px;
-  --t-ui-sm:  13px;
+  --t-ui-xs: 12px;
+  --t-ui-sm: 13px;
   --t-ui-base: 14px;
-  --t-ui-md:  15px;
-  --t-ui-lg:  16px;
-  --t-ui-xl:  18px;
-  --t-ui-h3:  20px;
-  --t-ui-h2:  27px;
-  --t-ui-h1:  30px;
-  --t-ui-display: 48px;
+  --t-ui-md: 15px;
+  --t-ui-lg: 17px;
+  --t-ui-xl: 20px;
+  --t-ui-h3: 20px;
+  --t-ui-h2: 24px;
+  --t-ui-h1: 30px;
+  --t-ui-display: 38px;
 
-  --track-tight: -0.02em;
-  --track-snug:  -0.01em;
-  --track-label:  0.16em;
-  --lh-snug:    1.1;
-  --lh-body:    1.5;
-  --lh-reading: 1.62;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
 
-  /* ---- radii ---- */
-  --r-control: 10px;   /* buttons, inputs, nav items */
-  --r-surface: 14px;   /* cards / paneled sections */
-  --r-panel:   20px;   /* chat panel & modals */
-  --r-pill:    999px;
-  /* legacy semantic aliases -> new values (keeps rounded-button/input/card/modal live) */
-  --radius-button: var(--r-control);
-  --radius-input:  var(--r-control);
-  --radius-card:   var(--r-surface);
-  --radius-modal:  var(--r-panel);
+  --leading-tight: 1.06;
+  --leading-snug: 1.2;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.62;
 
-  /* ---- app geometry ---- */
-  --sidebar-w: 268px;
-  --sidebar-w-collapsed: 76px;
+  --tracking-display: -0.032em;
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.09em;
 
-  /* ---- focus ring ---- */
-  --ring: 0 0 0 3px color-mix(in srgb, var(--cyan) 20%, transparent);
+  /* Semantic roles — size / weight / leading / tracking travel together. */
+  --type-body-font: var(--font-sans);
+  --type-body-size: var(--text-base);
+  --type-body-weight: var(--weight-regular);
+  --type-body-leading: var(--leading-relaxed);
 
-  /* ---- elevation (dark: reads on alpha + glow, not drop shadow) ---- */
-  --shadow-pill:  0 14px 40px -12px rgba(0, 0, 0, 0.7);
-  --shadow-panel: 0 30px 70px -18px rgba(0, 0, 0, 0.75);
-  --shadow-modal: 0 30px 80px -20px rgba(0, 0, 0, 0.82);
+  --type-price-font: var(--font-display);
+  --type-price-weight: var(--weight-bold);
+  --type-price-tracking: var(--tracking-tight);
+  --type-price-features: 'tnum' 1, 'lnum' 1;
 
-  /* ---- motion ---- */
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --ease-out: var(--ease);   /* legacy alias, kept live */
-  --dur-fast: 120ms;
-  --dur-base: 200ms;
+  --type-data-font: var(--font-mono);
+  --type-data-size: var(--text-xs);
+  --type-data-weight: var(--weight-medium);
+  --type-data-tracking: var(--tracking-wide);
+
+  /* ---- Space: 4px base grid ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+  --radius-control: var(--radius-md);
+  --radius-card: var(--radius-lg);
+  --radius-photo: var(--radius-md);
+  --radius-modal: var(--radius-xl);
+
+  /* ---- Control sizing ---- */
+  --control-h-sm: 32px;
+  --control-h-md: 40px;
+  --control-h-lg: 48px;
+  --tap-min: 44px;
+  --focus-ring-w: 3px;
+
+  /* ---- App geometry ---- */
+  --rail-w: 92px; /* the icon-over-label nav rail */
+  --drawer-w: 268px; /* the same rail, off-canvas below 768px */
+  --mobile-top: 72px; /* clearance the hamburger needs */
+  --container-max: 1080px;
+  --gutter: 24px;
+
+  /* ---- Elevation. Warm-tinted, never neutral black. ---- */
+  --shadow-xs: 0 1px 2px rgba(16, 15, 13, 0.06);
+  --shadow-sm: 0 1px 2px rgba(16, 15, 13, 0.05), 0 2px 6px rgba(16, 15, 13, 0.05);
+  --shadow-md: 0 2px 4px rgba(16, 15, 13, 0.04), 0 8px 20px -4px rgba(16, 15, 13, 0.1);
+  --shadow-lg: 0 4px 8px rgba(16, 15, 13, 0.05), 0 18px 40px -8px rgba(16, 15, 13, 0.14);
+  --shadow-xl: 0 8px 16px rgba(16, 15, 13, 0.06), 0 34px 70px -14px rgba(16, 15, 13, 0.22);
+  --shadow-card: var(--shadow-sm);
+  --shadow-card-hover: var(--shadow-md);
+  --shadow-popover: var(--shadow-lg);
+  --shadow-modal: var(--shadow-xl);
+  --shadow-focus: 0 0 0 3px var(--bamboo-200);
+  --shadow-focus-danger: 0 0 0 3px rgba(178, 58, 46, 0.26);
+  --shadow-hairline: inset 0 0 0 1px rgba(16, 15, 13, 0.07);
+  --hairline: 1px solid var(--border-subtle);
+
+  /* ---- Motion. Calm and quick. Nothing bounces, nothing loops. ---- */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.25, 1);
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+  --transition-control:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+  --transition-surface:
+    box-shadow var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
+  --lift-hover: translateY(-2px);
+  --press-scale: 0.985;
 }

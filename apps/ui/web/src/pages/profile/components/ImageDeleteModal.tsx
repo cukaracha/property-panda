@@ -16,7 +16,7 @@ export default function ImageDeleteModal({ isOpen, onCancel, onConfirm }: ImageD
       title='Remove Profile Picture'
       description='Are you sure you want to remove your profile picture?'
       icon={
-        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-rose-line bg-rose-soft text-rose'>
+        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-rose-500 bg-danger-subtle text-danger'>
           <AlertTriangle size={20} />
         </span>
       }
@@ -32,8 +32,8 @@ export default function ImageDeleteModal({ isOpen, onCancel, onConfirm }: ImageD
         </>
       }
     >
-      <div className='rounded-surface border border-line bg-panel-2 p-3'>
-        <p className='text-sm text-ink-2'>
+      <div className='rounded-card border border-line bg-sunken p-3'>
+        <p className='text-sm text-body'>
           This action will permanently remove your profile picture. You can always upload a new one
           later.
         </p>

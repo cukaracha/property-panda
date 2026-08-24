@@ -99,36 +99,38 @@ export default function Profile() {
   };
 
   return (
-    <div className='mx-auto max-w-3xl px-6 py-8'>
-      <ProfileHeader />
+    <div className='page-scroll'>
+      <div className='mx-auto max-w-[720px] px-6 pb-24 pt-10'>
+        <ProfileHeader />
 
-      {toasts.map((toast, index) => (
-        <Toast
-          key={toast.id}
-          toast={toast}
-          index={index}
-          onRemove={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+        {toasts.map((toast, index) => (
+          <Toast
+            key={toast.id}
+            toast={toast}
+            index={index}
+            onRemove={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+          />
+        ))}
+
+        <ProfilePictureCard
+          profileImage={profileImage}
+          isUploadingImage={isUploadingImage}
+          isDragOver={isDragOver}
+          onImageUpload={handleImageUpload}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onRequestDeletePicture={() => setShowImageDeleteConfirm(true)}
         />
-      ))}
 
-      <ProfilePictureCard
-        profileImage={profileImage}
-        isUploadingImage={isUploadingImage}
-        isDragOver={isDragOver}
-        onImageUpload={handleImageUpload}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onRequestDeletePicture={() => setShowImageDeleteConfirm(true)}
-      />
+        <ClaudeTokenCard onNotify={addToast} />
 
-      <ClaudeTokenCard onNotify={addToast} />
-
-      <ImageDeleteModal
-        isOpen={showImageDeleteConfirm}
-        onCancel={() => setShowImageDeleteConfirm(false)}
-        onConfirm={removeProfileImage}
-      />
+        <ImageDeleteModal
+          isOpen={showImageDeleteConfirm}
+          onCancel={() => setShowImageDeleteConfirm(false)}
+          onConfirm={removeProfileImage}
+        />
+      </div>
     </div>
   );
 }

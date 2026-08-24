@@ -1,83 +1,134 @@
-@import "tailwindcss";
-@import "./styles/tokens.css";
-@import "./styles/theme.css";
-@import "./styles/app.css";
-@import "./styles/app-chat.css";
-/* Light theme LAST: it re-points the same token names under [data-theme="light"].
-   :root and [data-theme="light"] are equal specificity, so light wins by source
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/theme.css';
+@import './styles/app.css';
+@import './styles/app-chat.css';
+/* Dark theme LAST: it re-points the same token names under [data-theme="dark"].
+   :root and [data-theme="dark"] are equal specificity, so dark wins by source
    order — never by raising specificity. */
-@import "./styles/themes.css";
+@import './styles/themes.css';
 
 /* ============================================================
-   Base document — the "Measured" canvas (dark by default).
-   Near-black background, near-white Archivo type, one cyan accent.
-   Layouts are full-width; the app shell owns its own scrolling.
+   Base document — warm paper, warm ink, one bamboo action colour.
+   The page itself never scrolls: the app shell owns its scrolling
+   regions, so a route can hold a fixed rail beside a scrolling column.
    ============================================================ */
 
 :root {
-  color-scheme: dark;
-  font-family: var(--sans);
-  line-height: var(--lh-body);
-  color: var(--ink-2);
-  background: var(--bg);
+  font-family: var(--type-body-font);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-leading);
+  font-weight: var(--type-body-weight);
+  color: var(--text-body);
+  background: var(--surface-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-body { margin: 0; }
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--surface-page);
+  color: var(--text-body);
+}
 
 #root {
-  min-height: 100svh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--sans);
-  font-weight: var(--w-semi);
-  line-height: var(--lh-snug);
-  letter-spacing: var(--track-tight);
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
   margin: 0;
+  text-wrap: balance;
+}
+h1,
+h2 {
+  letter-spacing: var(--tracking-display);
+  font-weight: var(--weight-bold);
 }
 
-p { margin: 0; }
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
 
-/* No hover underlines by default — interactive surfaces (nav items, tiles,
+/* No hover underlines by default — interactive surfaces (nav items, rows,
    buttons-as-links) carry their own hover treatment. Plain text links that
-   have no other hover cue opt back in (.link, breadcrumb links). */
-a { text-decoration: none; }
+   have no other hover cue opt back in (.link). */
+a {
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
 
 /* Element default COLORS live in @layer base so Tailwind utility colors win.
    `@import "tailwindcss"` puts utilities in @layer utilities; unlayered rules
    beat ALL layered rules regardless of specificity, so an unlayered
-   `h1 { color }` / `a { color }` would silently override `text-ink` etc.
+   `h1 { color }` / `a { color }` would silently override `text-strong` etc.
    Keeping only the colour here — not margin/font — fixes that without
    shifting any spacing. */
 @layer base {
-  h1, h2, h3, h4, h5, h6 { color: var(--ink); }
-  a { color: var(--cyan); }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--text-strong);
+  }
+  a {
+    color: var(--text-link);
+  }
+  strong {
+    font-weight: var(--weight-semibold);
+    color: var(--text-strong);
+  }
 }
 
-code {
-  font-family: var(--mono);
-  font-size: 13px;
-  border-radius: 6px;
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
-  background: var(--panel-2);
-  color: var(--ink);
+  background: var(--surface-sunken);
+  color: var(--text-strong);
 }
 
-/* In @layer base so component rules (e.g. .btn:focus-visible with the cyan
-   box-shadow ring + outline:none) can override it — an unlayered rule would
-   double every ring with this outline. */
+/* One focus treatment everywhere: a 3px bamboo halo, never a browser outline.
+   In @layer base so component rules can override it — an unlayered rule would
+   double every ring. */
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--accent-line);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--shadow-focus);
+    border-radius: var(--radius-xs);
   }
 }
 
@@ -89,17 +140,40 @@ code {
    ============================================================ */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+  scrollbar-color: var(--border-default) transparent;
 }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: var(--border-default);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ink-4);
+  background: var(--border-strong);
   background-clip: padding-box;
+}
+
+::selection {
+  background: var(--bamboo-100);
+  color: var(--stone-900);
+}
+
+/* One reduced-motion rule for the whole app: every duration and every
+   iteration count collapses to nothing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

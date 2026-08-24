@@ -95,11 +95,11 @@ export const DISTRICT_NAME_BY_CODE: Record<string, string> = Object.fromEntries(
 
 export const TENURE_OPTIONS: FilterOption[] = [
   { value: 'F', label: 'Freehold' },
-  { value: 'L99', label: '99-year leasehold' },
-  { value: 'L103', label: '103-year leasehold' },
-  { value: 'L110', label: '110-year leasehold' },
-  { value: 'L999', label: '999-year leasehold' },
-  { value: 'L9999', label: '9999-year leasehold' },
+  { value: 'L99', label: '99-year' },
+  { value: 'L103', label: '103-year' },
+  { value: 'L110', label: '110-year' },
+  { value: 'L999', label: '999-year' },
+  { value: 'L9999', label: '9999-year' },
 ];
 
 export const FLOOR_LEVEL_OPTIONS: FilterOption[] = [
@@ -390,8 +390,10 @@ export function describeFilters(form: FilterFormState): string {
   if (form.lastPosted) {
     parts.push(`listed ${describeCodes(LAST_POSTED_OPTIONS, [form.lastPosted]).toLowerCase()}`);
   }
-  parts.push(
-    form.maxPages === MAX_PAGES_ALL ? 'all pages scanned' : `${form.maxPages} pages scanned`
-  );
+  // A narrowed scan is a filter the person actually set, so it is named. The
+  // default is not: "all pages scanned" appeared on every row and said nothing
+  // the default did not already say.
+  if (form.maxPages !== MAX_PAGES_ALL) parts.push(`${form.maxPages} pages scanned`);
+  if (parts.length === 0) return 'no filters set';
   return parts.join(', ');
 }

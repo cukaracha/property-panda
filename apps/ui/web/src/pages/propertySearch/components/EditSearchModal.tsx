@@ -91,9 +91,9 @@ export default function EditSearchModal({
       dismissible={!isSaving}
       title='Edit search'
       description='Change the name, the filters, or what this search keeps hidden and pinned.'
-      maxWidth='max-w-3xl'
+      maxWidth='max-w-[940px]'
       icon={
-        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent-line bg-accent-soft text-cyan'>
+        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-line-brand bg-brand-subtle text-brand'>
           <Pencil size={20} />
         </span>
       }
@@ -122,7 +122,7 @@ export default function EditSearchModal({
           autoFocus
           onChange={event => setDraftName(event.target.value)}
         />
-        {!trimmed && <p className='type-ui-sm mt-2 text-rose'>A search needs a name.</p>}
+        {!trimmed && <p className='type-ui-sm mt-2 text-danger'>A search needs a name.</p>}
 
         <div className='mt-5 border-t border-line pt-4'>
           <SearchFilterFields form={draftForm} onChange={setDraftForm} />
@@ -131,21 +131,21 @@ export default function EditSearchModal({
         <div className='mt-5 space-y-4 border-t border-line pt-4'>
           <p className='type-ui-eyebrow'>Hidden items</p>
           {draftHidden.length === 0 ? (
-            <p className='type-ui-sm text-ink-3'>This search hides nothing.</p>
+            <p className='type-ui-sm text-muted'>This search hides nothing.</p>
           ) : (
             GROUPS.map(group => {
               const entries = draftHidden.filter(entity => entity.scope === group.scope);
               if (entries.length === 0) return null;
               return (
                 <div key={group.scope}>
-                  <p className='type-ui-sm mb-1 text-ink-3'>{group.title}</p>
+                  <p className='type-ui-sm mb-1 text-muted'>{group.title}</p>
                   <ul className='divide-y divide-line-2 border-y border-line'>
                     {entries.map(entity => (
                       <li
                         key={entity.entityKey}
                         className='flex items-center justify-between gap-3 py-2'
                       >
-                        <span className='min-w-0 truncate text-sm text-ink-2'>{entity.label}</span>
+                        <span className='min-w-0 truncate text-sm text-body'>{entity.label}</span>
                         <Button
                           variant='ghost'
                           size='sm'
@@ -170,12 +170,12 @@ export default function EditSearchModal({
         <div className='mt-5 space-y-4 border-t border-line pt-4'>
           <p className='type-ui-eyebrow'>Bookmarked properties</p>
           {draftBookmarked.length === 0 ? (
-            <p className='type-ui-sm text-ink-3'>This search bookmarks nothing.</p>
+            <p className='type-ui-sm text-muted'>This search bookmarks nothing.</p>
           ) : (
             <ul className='divide-y divide-line-2 border-y border-line'>
               {draftBookmarked.map(entity => (
                 <li key={entity.entityKey} className='flex items-center justify-between gap-3 py-2'>
-                  <span className='min-w-0 truncate text-sm text-ink-2'>{entity.label}</span>
+                  <span className='min-w-0 truncate text-sm text-body'>{entity.label}</span>
                   <Button
                     variant='ghost'
                     size='sm'

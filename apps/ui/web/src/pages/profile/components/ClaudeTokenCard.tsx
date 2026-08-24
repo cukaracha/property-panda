@@ -65,7 +65,7 @@ export default function ClaudeTokenCard({ onNotify }: ClaudeTokenCardProps) {
     <Card className='mb-6'>
       <CardHeader>
         <div className='flex items-center gap-3'>
-          <KeyRound size={22} className='text-cyan' />
+          <KeyRound size={22} className='text-brand' />
           <div>
             <CardTitle>Claude subscription token</CardTitle>
             <CardDescription>The assistant runs on your own Claude subscription</CardDescription>
@@ -87,12 +87,12 @@ export default function ClaudeTokenCard({ onNotify }: ClaudeTokenCardProps) {
             }
             onChange={e => setToken(stripWhitespace(e.target.value))}
           />
-          <p className='text-xs text-ink-3'>
+          <p className='text-xs text-muted'>
             Generate one by running <code>claude setup-token</code> in your terminal. It is stored
             on this machine and never sent back to the browser.
           </p>
           {status?.configured && status.updatedAt && (
-            <p className='text-xs text-ink-3'>
+            <p className='text-xs text-muted'>
               Last updated {new Date(status.updatedAt).toLocaleString()}
             </p>
           )}

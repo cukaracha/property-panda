@@ -61,7 +61,7 @@ export default function SavedSearchMenu({ searchName, onEdit, onDelete }: SavedS
       {isOpen && (
         <div
           role='menu'
-          className='absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-surface border border-line bg-canvas-2 p-1 shadow-panel'
+          className='absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-card border border-line bg-card p-1 shadow-lg'
         >
           <button
             type='button'
@@ -75,7 +75,7 @@ export default function SavedSearchMenu({ searchName, onEdit, onDelete }: SavedS
           <button
             type='button'
             role='menuitem'
-            className='btn btn-sm btn-ghost w-full justify-start text-rose'
+            className='btn btn-sm btn-ghost w-full justify-start text-danger'
             onClick={() => choose(onDelete)}
           >
             <Trash2 size={16} />

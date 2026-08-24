@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Check } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
 export interface ChipOption<T extends string | number> {
@@ -21,6 +22,10 @@ export interface FilterChipGroupProps<T extends string | number> {
  * One labelled row of multi choice toggle chips, used for every code list in the
  * search filters. Chips rather than a select because the whole selection stays visible
  * at a glance instead of hidden inside a closed list.
+ *
+ * A selected chip carries a check glyph as well as a fill, so the selection is never
+ * signalled by colour alone. Chips size to their content rather than to a grid, which
+ * is what gives the check somewhere to go.
  */
 export default function FilterChipGroup<T extends string | number>({
   label,
@@ -45,13 +50,14 @@ export default function FilterChipGroup<T extends string | number>({
               title={option.title}
               aria-pressed={isSelected}
               className={cn(
-                'rounded-control border px-3 py-1.5 text-sm transition-colors',
+                'inline-flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-sm font-medium transition-colors',
                 isSelected
-                  ? 'border-accent-line bg-accent-soft text-cyan'
-                  : 'border-line text-ink-3 hover:text-ink'
+                  ? 'border-line-brand bg-brand-subtle text-brand'
+                  : 'border-line text-muted hover:bg-sunken hover:text-strong'
               )}
               onClick={() => onToggle(option.value)}
             >
+              {isSelected && <Check size={13} aria-hidden />}
               {option.label}
             </button>
           );

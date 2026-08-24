@@ -1,67 +1,104 @@
 /* ============================================================
-   "Measured" — Tailwind v4 theme mapping
+   Property Panda — Tailwind v4 theme mapping
    Tailwind v4 is config-less; this @theme inline block exposes the raw
    tokens (tokens.css) as Tailwind utility namespaces WITHOUT
    re-emitting a second copy of each variable (that is what `inline`
-   does). The raw --ink* / --cyan / --panel* vars stay live for the
-   ported .cb-* / .cv-* / app-shell component CSS.
+   does). The raw --stone-* / --bamboo-* / --surface-* vars stay live
+   for the bespoke .app / .cb-* component CSS.
 
-   NOTE: the app-scale type sizes (--t-ui-*) are intentionally NOT
-   mapped — Tailwind's text-* namespace is also font-size and mapping
-   them would clobber Tailwind's scale. Size tokens remain available to
-   component CSS only.
+   TWO NAMESPACE COLLISIONS, both resolved by renaming the UTILITY and
+   never the token:
+
+   1. The app-scale type sizes (--t-ui-*) and the design system's
+      --text-2xs … --text-7xl are intentionally NOT mapped — Tailwind's
+      text-* namespace is font-size, so mapping the colour aliases
+      (--text-strong, --text-body, …) under those names would clobber
+      the size scale. Colours map as --color-strong / --color-body /
+      --color-muted / --color-subtle instead.
+
+   2. --border-subtle and --text-subtle would both want the single
+      Tailwind name `subtle` in the flat --color-* namespace. Text keeps
+      it (text-subtle); the hairlines map as --color-line / --color-line-2
+      / --color-line-strong, so border-line stays the border utility it
+      has always been and now points at the new token.
    ============================================================ */
 
 @theme inline {
-  /* ---------- Fonts (single family: Archivo; legacy aliases live) ---------- */
-  --font-sans:    var(--sans);
-  --font-display: var(--sans);
-  --font-body:    var(--sans);
-  --font-mono:    var(--mono);
+  /* ---------- Fonts ---------- */
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
 
-  /* ---------- Canvas & surfaces ---------- */
-  --color-canvas:   var(--bg);
-  --color-canvas-2: var(--bg-2);
-  --color-line:     var(--line);
-  --color-line-2:   var(--line-2);
-  --color-panel:    var(--panel);
-  --color-panel-2:  var(--panel-2);
+  /* ---------- Surfaces ---------- */
+  --color-page: var(--surface-page);
+  --color-card: var(--surface-card);
+  --color-sunken: var(--surface-sunken);
+  --color-raised: var(--surface-raised);
+  --color-page-inverse: var(--surface-inverse);
+  --color-photo: var(--surface-photo);
 
-  /* ---------- Ink ramp ---------- */
-  --color-ink:   var(--ink);
-  --color-ink-2: var(--ink-2);
-  --color-ink-3: var(--ink-3);
-  --color-ink-4: var(--ink-4);
+  /* ---------- Text ---------- */
+  --color-strong: var(--text-strong);
+  --color-body: var(--text-body);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-inverse: var(--text-inverse);
+  --color-brand: var(--text-brand);
+  --color-accent: var(--text-accent);
+  --color-danger: var(--text-danger);
 
-  /* ---------- Brand family ---------- */
-  --color-cyan:   var(--cyan);
-  --color-teal:   var(--teal);
-  --color-blue:   var(--blue);
-  --color-indigo: var(--indigo);
-  --color-rose:   var(--rose);
+  /* ---------- Fills that carry a brand or status meaning ---------- */
+  --color-brand-solid: var(--surface-brand);
+  --color-brand-subtle: var(--surface-brand-subtle);
+  --color-accent-subtle: var(--surface-accent-subtle);
+  --color-info-subtle: var(--surface-info-subtle);
+  --color-warning-subtle: var(--surface-warning-subtle);
+  --color-danger-subtle: var(--surface-danger-subtle);
+  --color-on-brand: var(--action-primary-text);
 
-  /* ---------- Accent tints & aliases ---------- */
-  --color-accent-ink:  var(--accent-ink);
-  --color-accent-soft: var(--accent-soft);
-  --color-accent-line: var(--accent-line);
-  --color-rose-soft:   var(--rose-soft);
-  --color-rose-line:   var(--rose-line);
-  --color-presence:    var(--presence);
+  /* ---------- Status foregrounds ---------- */
+  --color-success-fg: var(--status-success-fg);
+  --color-info-fg: var(--status-info-fg);
+  --color-warning-fg: var(--status-warning-fg);
+  --color-new-fg: var(--status-new-fg);
+  --color-new-bg: var(--status-new-bg);
+
+  /* ---------- Hairlines ---------- */
+  --color-line: var(--border-subtle);
+  --color-line-2: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-line-brand: var(--border-brand);
+
+  /* ---------- Ramp steps that components legitimately reach for ---------- */
+  --color-bamboo-50: var(--bamboo-50);
+  --color-bamboo-100: var(--bamboo-100);
+  --color-bamboo-600: var(--bamboo-600);
+  --color-clay-100: var(--clay-100);
+  --color-clay-500: var(--clay-500);
+  --color-rose-100: var(--rose-100);
+  --color-rose-500: var(--rose-500);
+  --color-stone-100: var(--stone-100);
 
   /* ---------- Radii ---------- */
-  --radius-control: var(--r-control);
-  --radius-surface: var(--r-surface);
-  --radius-panel:   var(--r-panel);
-  --radius-button:  var(--radius-button);
-  --radius-input:   var(--radius-input);
-  --radius-card:    var(--radius-card);
-  --radius-modal:   var(--radius-modal);
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-photo: var(--radius-photo);
+  --radius-modal: var(--radius-modal);
+  --radius-pill: var(--radius-pill);
 
   /* ---------- Shadows ---------- */
-  --shadow-pill:  var(--shadow-pill);
-  --shadow-panel: var(--shadow-panel);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-popover: var(--shadow-popover);
   --shadow-modal: var(--shadow-modal);
 
   /* ---------- Motion ---------- */
-  --ease-out: var(--ease-out);
+  --ease-standard: var(--ease-standard);
+  --ease-entrance: var(--ease-entrance);
 }

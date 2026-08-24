@@ -40,7 +40,7 @@ export default function ProfilePictureCard({
     <Card className='mb-6'>
       <CardHeader>
         <div className='flex items-center gap-3'>
-          <Camera size={22} className='text-cyan' />
+          <Camera size={22} className='text-brand' />
           <div>
             <CardTitle>Profile Picture</CardTitle>
             <CardDescription>Upload a profile picture to personalize your account</CardDescription>
@@ -50,20 +50,23 @@ export default function ProfilePictureCard({
       <CardContent>
         <div className='flex items-center gap-6'>
           <div
-            className={cn('relative rounded-full transition-all', isDragOver && 'ring-2 ring-cyan')}
+            className={cn(
+              'relative rounded-full transition-all',
+              isDragOver && 'ring-2 ring-line-brand'
+            )}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
           >
-            <div className='flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border border-line bg-panel-2'>
+            <div className='flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border border-line bg-sunken'>
               {profileImage ? (
                 <img src={profileImage} alt='Profile' className='h-full w-full object-cover' />
               ) : (
-                <User size={64} className='text-ink-4' />
+                <User size={64} className='text-subtle' />
               )}
             </div>
             {isUploadingImage && (
-              <div className='absolute inset-0 flex items-center justify-center rounded-full bg-canvas/70'>
+              <div className='absolute inset-0 flex items-center justify-center rounded-full bg-page/70'>
                 <Spinner size='lg' />
               </div>
             )}
@@ -102,7 +105,7 @@ export default function ProfilePictureCard({
               </Button>
             )}
 
-            <p className='text-xs text-ink-3'>Supported formats: JPG, PNG, GIF (max 5MB)</p>
+            <p className='text-xs text-muted'>Supported formats: JPG, PNG, GIF (max 5MB)</p>
           </div>
         </div>
       </CardContent>

@@ -2,7 +2,7 @@
    Links use the cyan accent; type is the Archivo brand face. */
 .chat-markdown {
   color: inherit;
-  font-family: var(--sans);
+  font-family: var(--font-sans);
   font-weight: 400;
   font-size: 14.5px;
   line-height: 1.62;
@@ -21,8 +21,8 @@
 }
 
 .chat-markdown strong {
-  color: var(--ink);
-  font-weight: var(--w-semi);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
 }
 
 .chat-markdown ul,
@@ -36,17 +36,17 @@
 }
 
 .chat-markdown code {
-  background: var(--panel-2);
+  background: var(--surface-sunken);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
-  font-family: var(--mono);
-  color: var(--ink);
+  font-family: var(--font-mono);
+  color: var(--text-strong);
 }
 
 .chat-markdown pre {
-  background: var(--bg);
-  border: 1px solid var(--line-2);
+  background: var(--surface-page);
+  border: 1px solid var(--border-subtle);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
@@ -65,8 +65,8 @@
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  color: var(--ink);
-  font-weight: var(--w-semi);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
   margin-bottom: 8px;
   margin-top: 16px;
 }
@@ -80,12 +80,18 @@
   margin-top: 0;
 }
 
-.chat-markdown h1 { font-size: 1.4em; }
-.chat-markdown h2 { font-size: 1.25em; }
-.chat-markdown h3 { font-size: 1.1em; }
+.chat-markdown h1 {
+  font-size: 1.4em;
+}
+.chat-markdown h2 {
+  font-size: 1.25em;
+}
+.chat-markdown h3 {
+  font-size: 1.1em;
+}
 
 .chat-markdown blockquote {
-  border-left: 3px solid var(--accent-line);
+  border-left: 3px solid var(--border-brand);
   padding-left: 12px;
   margin-left: 0;
   margin-bottom: 11px;
@@ -93,18 +99,18 @@
 }
 
 .chat-markdown a {
-  color: var(--cyan);
+  color: var(--text-brand);
   text-decoration: underline;
 }
 
 .chat-markdown a:hover {
-  color: var(--cyan);
+  color: var(--text-brand);
   opacity: 0.85;
 }
 
 .chat-markdown hr {
   border: none;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border-subtle);
   margin: 14px 0;
 }
 
@@ -116,15 +122,15 @@
 
 .chat-markdown th,
 .chat-markdown td {
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   padding: 8px;
   text-align: left;
 }
 
 .chat-markdown th {
-  background: var(--panel-2);
-  color: var(--ink);
-  font-weight: var(--w-semi);
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
 }
 
 .chat-markdown img {

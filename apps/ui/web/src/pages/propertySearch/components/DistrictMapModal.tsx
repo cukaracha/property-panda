@@ -34,10 +34,10 @@ export default function DistrictMapModal({
       title='Districts'
       description='Click a district to add it to the search. Drag to pan, scroll to zoom.'
       icon={<Map size={18} />}
-      iconColor='text-cyan'
-      // The 444px default is far too narrow for a map; this is the width EditSearchModal
+      iconColor='text-brand'
+      // The 468px default is far too narrow for a map; this is the width EditSearchModal
       // already uses for the same reason.
-      maxWidth='max-w-3xl'
+      maxWidth='max-w-[940px]'
       footer={<Button onClick={onClose}>Done</Button>}
     >
       <DistrictMap

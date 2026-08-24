@@ -60,8 +60,8 @@ function getDescription(view: AlwaysHiddenView): PageDescription {
   return {
     ...base,
     layout:
-      'A heading and a count above two cards, one listing the always hidden properties and one the always hidden units. Each row is a label with an Unhide button.',
-    sections: ['Always hidden summary', 'Hidden properties', 'Hidden units'],
+      'A heading and a count above one table of everything hidden from every search. Each row carries a Property or Unit badge, the label the item was hidden under, the scope it is hidden in, and an Unhide button that asks for confirmation first.',
+    sections: ['Always hidden summary', 'Hidden items table'],
     notes: `${properties} properties and ${units} units are hidden from every search. This list belongs to the whole app rather than to one search, so unhiding something here brings it back everywhere at once. Each row stores only the label it was hidden under, not the listing itself, so there are no prices or project facts to describe. A search can also hide items on its own, and those are on the results screen rather than here.`,
   };
 }

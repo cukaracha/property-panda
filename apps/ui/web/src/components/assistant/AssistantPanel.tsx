@@ -3,7 +3,7 @@ import { Sparkles, RotateCcw, ChevronDown } from 'lucide-react';
 import { ASSISTANT_NAME } from '../../config/app';
 
 export interface AssistantPanelProps {
-  /** UI-only page label shown as the header subline. */
+  /** Accepted so callers need not change, but the subline no longer names a screen. */
   scope?: string;
   /** Resets the thread and starts a fresh agent session. */
   onNewChat: () => void;
@@ -16,16 +16,13 @@ export interface AssistantPanelProps {
 
 /**
  * The floating assistant chat panel (open state). Fixed bottom-right, radius 20,
- * dark card, rises in. Header: accent Sparkles avatar with a green presence
- * dot, the assistant name + a scope subline, plus New chat and Minimise buttons.
+ * a white card that rises in. Header: a Sparkles avatar with a presence dot, the
+ * assistant name over one fixed subline, plus New chat and Minimise buttons.
+ *
+ * The subline no longer names the screen. The assistant is still handed the current
+ * screen's context on every turn; the header simply stopped repeating it.
  */
-export function AssistantPanel({
-  scope,
-  onNewChat,
-  onClose,
-  composer,
-  children,
-}: AssistantPanelProps) {
+export function AssistantPanel({ onNewChat, onClose, composer, children }: AssistantPanelProps) {
   return (
     <div className='cb-panel cb-anim' role='dialog' aria-label={`${ASSISTANT_NAME} assistant`}>
       <div className='cb-head'>
@@ -35,9 +32,7 @@ export function AssistantPanel({
         </span>
         <div className='cb-head__id'>
           <div className='cb-head__name'>{ASSISTANT_NAME}</div>
-          <div className='cb-head__scope'>
-            {scope ? `${scope} assistant` : 'Your study assistant'}
-          </div>
+          <div className='cb-head__scope'>Your personal assistant</div>
         </div>
         <div className='cb-head__actions'>
           <button

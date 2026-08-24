@@ -39,14 +39,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
 function DefaultErrorFallback() {
   return (
-    <div className='grid min-h-screen place-items-center bg-canvas px-6'>
+    <div className='grid min-h-screen place-items-center bg-page px-6'>
       <div className='flex max-w-md flex-col items-center gap-4 text-center'>
-        <span className='grid h-12 w-12 place-items-center rounded-surface border border-rose-line bg-rose-soft text-rose'>
+        <span className='grid h-12 w-12 place-items-center rounded-card border border-rose-500 bg-danger-subtle text-danger'>
           <AlertTriangle className='h-6 w-6' />
         </span>
         <div>
-          <h1 className='type-ui-h2 text-ink'>Something went wrong</h1>
-          <p className='mt-1 text-sm text-ink-3'>
+          <h1 className='type-ui-h2 text-strong'>Something went wrong</h1>
+          <p className='mt-1 text-sm text-muted'>
             The app ran into an unexpected error. Reloading usually clears it.
           </p>
         </div>

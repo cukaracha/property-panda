@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Map, SlidersHorizontal } from 'lucide-react';
+import { CheckCheck, Map, SlidersHorizontal } from 'lucide-react';
+import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { DropdownMenu } from '../../../components/inputs/DropdownMenu';
@@ -107,6 +108,9 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
   const toggleCount = (key: 'bedrooms' | 'bathrooms', value: number) =>
     onChange({ ...form, [key]: toggleOption(form[key], value) });
 
+  const selectAllDistricts = () =>
+    onChange({ ...form, districtCode: DISTRICT_OPTIONS.map(option => option.value) });
+
   const moreCount = countActive(form, MORE_FILTER_KEYS);
 
   // The separators are a display concern only: the form keeps the raw digits, so a
@@ -127,8 +131,8 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
             value={rangeValue(field, field.min)}
             onChange={event => setField(field.min, stripThousands(event.target.value))}
           />
-          <span className='text-sm text-ink-3' aria-hidden>
-            -
+          <span className='shrink-0 text-sm text-muted' aria-hidden>
+            to
           </span>
           <Input
             type='text'
@@ -167,7 +171,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
         <Button variant='ghost' size='sm' onClick={() => setShowMore(current => !current)}>
           <SlidersHorizontal size={16} />
           {showMore ? 'Fewer filters' : 'More filters'}
-          {!showMore && moreCount > 0 && ` (${moreCount})`}
+          {!showMore && moreCount > 0 && <Badge tone='positive'>{`${moreCount} set`}</Badge>}
         </Button>
       </div>
 
@@ -188,17 +192,23 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
             onToggle={value => toggleCount('bathrooms', value)}
           />
           <FilterChipGroup
-            label='District'
+            label='Filter by district'
             options={DISTRICT_OPTIONS}
             selected={form.districtCode}
             onToggle={value => toggleCode('districtCode', value)}
             // The chips stay: the map is a second way into the same field, not the only
             // way in, and either view updates the other because both read form.districtCode.
             action={
-              <Button variant='ghost' size='sm' onClick={() => setIsMapOpen(true)}>
-                <Map size={15} />
-                View on map
-              </Button>
+              <span className='flex items-center gap-1'>
+                <Button variant='ghost' size='sm' onClick={selectAllDistricts}>
+                  <CheckCheck size={15} />
+                  Select all
+                </Button>
+                <Button variant='ghost' size='sm' onClick={() => setIsMapOpen(true)}>
+                  <Map size={15} />
+                  View on map
+                </Button>
+              </span>
             }
           />
           <FilterChipGroup

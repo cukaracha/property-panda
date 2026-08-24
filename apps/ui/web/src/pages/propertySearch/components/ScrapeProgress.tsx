@@ -1,5 +1,4 @@
 import { Check, Circle, Hand } from 'lucide-react';
-import { Card } from '../../../components/ui/card';
 import { Spinner } from '../../../components/ui/spinner';
 import { cn } from '../../../lib/utils';
 import type { SearchStatus } from '../../../types/listings';
@@ -43,17 +42,18 @@ function stepDetail(step: SearchStatus, props: ScrapeProgressProps): string {
 }
 
 /**
- * Live progress for a running scrape: fetching listings, then fetching property
- * details, then done. Each step is either done, running, or still to come, and
- * carries how far through it is.
+ * The wait itself, filling the results column: a breathing brand mark, the phase the
+ * scrape is in as the headline, a plain line about how long it takes, then the three
+ * steps. Each step is either done, running, or still to come, and its count unfurls on
+ * a width transition as its phase starts reporting.
  *
  * Enrichment is one page load per property and is most of a cold run, so it is the
- * step the count matters on -- without it the card sits on the same line for over a
+ * step the count matters on -- without it the screen sits on the same line for over a
  * minute with no sign of whether anything is moving.
  *
- * A `note` means the scrape has stopped and needs the user before it can go on. It is
- * shown above the steps rather than beside them, because the steps keep reporting
- * healthy progress on whatever else is still in flight.
+ * A `note` means the scrape has stopped and needs the user before it can go on. It sits
+ * above the steps under its own heading rather than beside them, because the steps keep
+ * reporting healthy progress on whatever else is still in flight.
  */
 export default function ScrapeProgress(props: ScrapeProgressProps) {
   const { status, note } = props;
@@ -67,41 +67,68 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
         : PROGRESS_STEPS.indexOf(status);
 
   return (
-    <Card className='p-5'>
+    <div className='flex flex-col items-center gap-6 py-16 text-center'>
+      <img
+        className='pp-brand-mark pp-breathe h-16 w-16'
+        src='/icons/web-app-manifest-512x512.png'
+        alt=''
+        width={64}
+        height={64}
+      />
+
+      <div className='flex flex-col items-center gap-2'>
+        <h2 className='type-ui-h2 text-strong'>{STATUS_LABELS[status]}</h2>
+        <p className='type-ui-sm max-w-[420px] text-muted'>
+          A real browser window is doing the reading, so this usually takes about a minute.
+        </p>
+      </div>
+
       {note && (
-        <div className='mb-4 flex items-start gap-2 rounded-surface border border-accent-line bg-accent-soft p-3'>
-          <Hand size={16} className='mt-0.5 shrink-0 text-cyan' />
-          <p className='text-sm text-ink'>{note}</p>
+        <div className='w-full max-w-[520px] rounded-card border border-line-brand bg-brand-subtle p-4 text-left'>
+          <p className='type-ui-eyebrow mb-1.5 flex items-center gap-1.5 text-brand'>
+            <Hand size={13} />
+            This one needs you
+          </p>
+          <p className='text-sm text-strong'>{note}</p>
         </div>
       )}
 
-      <ol className='space-y-2'>
+      <ol className='flex w-full max-w-[420px] flex-col gap-1.5 text-left'>
         {PROGRESS_STEPS.map((step, index) => {
           const isDone = currentIndex > index;
           const isCurrent = currentIndex === index;
           const detail = index <= currentIndex ? stepDetail(step, props) : '';
           return (
-            <li key={step} className='flex items-center gap-2'>
+            <li
+              key={step}
+              className={cn(
+                'flex items-center gap-2.5 rounded-control px-3 py-2.5 transition-all',
+                isCurrent && 'bg-card shadow-sm',
+                !isDone && !isCurrent && 'opacity-55'
+              )}
+            >
               {isDone ? (
-                <Check size={15} className='text-cyan' />
+                <Check size={16} className='shrink-0 text-brand' />
               ) : isCurrent ? (
                 <Spinner size='sm' />
               ) : (
-                <Circle size={15} className='text-ink-4' />
+                <Circle size={16} className='shrink-0 text-subtle' />
               )}
               <span
                 className={cn(
                   'text-sm',
-                  isCurrent ? 'text-ink' : isDone ? 'text-ink-2' : 'text-ink-3'
+                  isCurrent ? 'font-semibold text-strong' : isDone ? 'text-body' : 'text-muted'
                 )}
               >
                 {STATUS_LABELS[step]}
-                {detail && <span className='text-ink-3'> ({detail})</span>}
+              </span>
+              <span className={cn('pp-unfurl type-data text-muted', detail && 'is-shown')}>
+                {detail}
               </span>
             </li>
           );
         })}
       </ol>
-    </Card>
+    </div>
   );
 }

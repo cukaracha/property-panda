@@ -189,7 +189,7 @@ ensure_env_local() {
     app_name=$(app_config displayName)
     assistant_name=$(app_config assistantName)
     [ -n "$app_name" ] || app_name="Property Panda"
-    [ -n "$assistant_name" ] || assistant_name="Panda-chan"
+    [ -n "$assistant_name" ] || assistant_name="Pandai"
 
     info "Writing .env.local"
     cat > "$env_file" <<ENV

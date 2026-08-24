@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { EyeOff, Heart, Ruler } from 'lucide-react';
+import { EyeOff, Heart, Ruler, Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
@@ -36,6 +36,11 @@ export interface UnitsTableProps {
  * carries the buttons that must not do that. Hiding a row is reversible: it drops
  * out of the render, but the result set keeps it.
  *
+ * The seven tracks below plus the cell padding come to exactly 720px, which is
+ * the width the wrapper starts scrolling sideways at. Each one is sized for its
+ * longest real value, the "Not available" fallback and a four figure psf
+ * included, so nothing is measured on the header alone.
+ *
  * Hiding is dropped rather than disabled when the caller passes no handler, which
  * is how the shortlist reuses this table without a flag saying which screen it is on.
  *
@@ -61,21 +66,50 @@ export default function UnitsTable({
     {
       key: 'bedrooms',
       header: 'Bedrooms',
+      width: '98px',
       render: row =>
         isNewSince(row, newSince) ? (
           <span className='flex flex-wrap items-center gap-2'>
             {row.unitTypeLabel}
-            <Badge tone='positive'>New</Badge>
+            <Badge tone='new'>
+              <Sparkles size={11} />
+              New
+            </Badge>
           </span>
         ) : (
           row.unitTypeLabel
         ),
     },
-    { key: 'bathrooms', header: 'Baths', render: row => formatNumber(row.bathrooms) },
-    { key: 'price', header: 'Price', render: row => formatCurrency(row.price) },
-    { key: 'floorAreaSqft', header: 'Floor area', render: row => formatSqft(row.floorAreaSqft) },
-    { key: 'psf', header: 'Price per sqft', render: row => formatPsf(row.psf) },
-    { key: 'listedLabel', header: 'Listed on', render: row => formatText(row.listedLabel) },
+    {
+      key: 'bathrooms',
+      header: 'Baths',
+      width: '60px',
+      render: row => formatNumber(row.bathrooms),
+    },
+    {
+      key: 'price',
+      header: 'Price',
+      width: '108px',
+      render: row => <span className='type-price'>{formatCurrency(row.price)}</span>,
+    },
+    {
+      key: 'floorAreaSqft',
+      header: 'Floor area',
+      width: '108px',
+      render: row => formatSqft(row.floorAreaSqft),
+    },
+    {
+      key: 'psf',
+      header: 'Price per sqft',
+      width: '110px',
+      render: row => formatPsf(row.psf),
+    },
+    {
+      key: 'listedLabel',
+      header: 'Listed on',
+      width: '108px',
+      render: row => <span className='type-data'>{formatText(row.listedLabel)}</span>,
+    },
   ];
 
   return (
@@ -86,6 +120,8 @@ export default function UnitsTable({
         keyExtractor={row => String(row.listingId)}
         emptyMessage={emptyMessage}
         onRowClick={openListing}
+        minWidth='720px'
+        actionsWidth='128px'
         rowLabel={row =>
           isNewSince(row, newSince)
             ? `Open listing ${row.listingId}, new since the last run`
@@ -95,10 +131,25 @@ export default function UnitsTable({
           const isShortlisted = shortlistedIds.has(String(row.listingId));
           return (
             <>
+              {(row.floorplans?.length ?? 0) > 0 && (
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='btn-sm hover:bg-brand-subtle hover:text-brand'
+                  title='View floorplan'
+                  aria-label={`View floorplan for unit ${row.listingId}`}
+                  onClick={() => setFloorplanRow(row)}
+                >
+                  <Ruler size={16} />
+                </Button>
+              )}
               <Button
                 variant='ghost'
                 size='icon'
-                className={cn('btn-sm', isShortlisted && 'text-cyan')}
+                className={cn(
+                  'btn-sm hover:bg-accent-subtle hover:text-accent',
+                  isShortlisted && 'text-accent'
+                )}
                 title={isShortlisted ? 'Remove from the shortlist' : 'Shortlist this unit'}
                 aria-label={
                   isShortlisted
@@ -110,23 +161,11 @@ export default function UnitsTable({
               >
                 <Heart size={16} fill={isShortlisted ? 'currentColor' : 'none'} />
               </Button>
-              {(row.floorplans?.length ?? 0) > 0 && (
-                <Button
-                  variant='ghost'
-                  size='icon'
-                  className='btn-sm'
-                  title='View floorplan'
-                  aria-label={`View floorplan for unit ${row.listingId}`}
-                  onClick={() => setFloorplanRow(row)}
-                >
-                  <Ruler size={16} />
-                </Button>
-              )}
               {onHideUnit && (
                 <Button
                   variant='ghost'
                   size='icon'
-                  className='btn-sm'
+                  className='btn-sm hover:bg-danger-subtle hover:text-danger'
                   title='Hide this unit'
                   aria-label={`Hide unit ${row.listingId}`}
                   onClick={() => onHideUnit(row)}

@@ -3,8 +3,7 @@
  *
  * The same reasoning as formatSavedOn on the shortlist: a recent run reads better as
  * "yesterday" than as a date, and an old one reads better as a date than as a duration
- * nobody counts in days. This one also has to say when there is no run at all, since a
- * search that has never run is what a first run measures nothing against.
+ * nobody counts in days.
  */
 const DAY_SECONDS = 86400;
 
@@ -23,10 +22,4 @@ function describe(timestamp: number, prefix: string): string {
 export function formatLastRun(lastRunAt: number | null): string {
   if (!lastRunAt) return 'Never run';
   return describe(lastRunAt, 'Last run');
-}
-
-/** The line under the results explaining what the New badges are measured against. */
-export function formatNewSince(newSince: number | null): string {
-  if (!newSince) return 'First run of this search, so nothing is marked new yet.';
-  return `New marks listings posted since this search ${describe(newSince, 'last ran')}.`;
 }

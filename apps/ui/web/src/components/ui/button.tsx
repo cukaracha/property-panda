@@ -12,7 +12,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   ghost: 'btn-ghost',
   destructive: 'btn-danger',
   secondary: 'btn-secondary',
-  link: 'btn-ghost text-cyan',
+  link: 'btn-ghost text-brand',
 };
 
 // variants that sit on a saturated fill → the loading spinner ring must invert

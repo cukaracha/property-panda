@@ -60,7 +60,7 @@ export default function SaveSearchModal({
       title='Save search'
       description='Saved searches sit under the filters on the search page. Click one to run it again.'
       icon={
-        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-accent-line bg-accent-soft text-cyan'>
+        <span className='inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-line-brand bg-brand-subtle text-brand'>
           <Bookmark size={20} />
         </span>
       }
@@ -89,7 +89,7 @@ export default function SaveSearchModal({
           if (event.key === 'Enter') save();
         }}
       />
-      <p className='type-ui-sm mt-3 text-ink-3'>{filterSummary}</p>
+      <p className='type-ui-sm mt-3 text-muted'>{filterSummary}</p>
     </Modal>
   );
 }

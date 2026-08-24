@@ -28,7 +28,7 @@ export default function SearchFilterPanel({
   return (
     <Card className='p-5'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
-        <h2 className='type-ui-h3 text-ink'>Search filters</h2>
+        <h2 className='type-ui-h3 text-strong'>Search filters</h2>
         <Button variant='ghost' size='sm' onClick={() => onChange(DEFAULT_FILTER_FORM)}>
           <RotateCcw size={16} />
           Reset filters

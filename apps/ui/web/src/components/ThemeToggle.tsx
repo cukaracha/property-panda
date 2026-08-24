@@ -6,8 +6,9 @@ export interface ThemeToggleProps {
   floating?: boolean;
   /**
    * `'button'` (default) is the self-contained icon button. `'row'` renders a
-   * full-width nav-style row — icon + "Dark mode" label + slide switch — for the
-   * sidebar footer, where the switch (not the icon) is the affordance.
+   * nav item for the rail footer: an icon over the current mode's name, which
+   * becomes a full-width row with a "Dark mode" label and a slide switch in the
+   * mobile drawer, where the switch (not the icon) is the affordance.
    */
   variant?: 'button' | 'row';
   className?: string;
@@ -28,12 +29,11 @@ const MoonIcon = (
 
 /**
  * Light/dark theme control. The default `'button'` variant is a self-contained
- * icon button that shows the SUN while dark (tap to go light) and the MOON while
- * light (tap to go dark). The `'row'` variant is a full-width sidebar row whose
- * icon reflects the CURRENT mode (moon while dark, sun while light) beside a
- * "Dark mode" label and a slide switch. Either way the CSS swap block in app.css
- * picks which SVG is visible from the active `data-theme`. Add `floating` on
- * full-bleed pages (login, Home chat).
+ * icon button showing the mode it would switch TO. The `'row'` variant reflects
+ * the CURRENT mode instead (sun while light, moon while dark) and names it, so
+ * the rail reads Light or Dark beside Search, Shortlist, Hidden and Profile.
+ * Either way the CSS swap block in app.css picks which SVG is visible from the
+ * active `data-theme`. Add `floating` on full-bleed pages.
  */
 export function ThemeToggle({ floating, variant = 'button', className }: ThemeToggleProps) {
   const { theme, toggle } = useTheme();
@@ -53,6 +53,7 @@ export function ThemeToggle({ floating, variant = 'button', className }: ThemeTo
           {SunIcon}
           {MoonIcon}
         </span>
+        <span className='ni-short'>{theme === 'dark' ? 'Dark' : 'Light'}</span>
         <span className='ni-label'>Dark mode</span>
         <span className='theme-switch' aria-hidden='true'>
           <span className='theme-switch__knob' />

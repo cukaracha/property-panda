@@ -1,5 +1,6 @@
 import type { PropertyInfo } from '../../types/listings';
 import { formatNumber, formatText, formatYear } from '../../lib/listingsFormat';
+import { cn } from '../../lib/utils';
 
 export interface PropertyInfoProps {
   info: PropertyInfo;
@@ -12,15 +13,15 @@ export interface PropertyInfoProps {
  */
 export default function PropertyInfo({ info }: PropertyInfoProps) {
   const rows = [
-    { label: 'TOP year', value: formatYear(info.topYear) },
-    { label: 'Tenure', value: formatText(info.tenure) },
-    { label: 'Total units', value: formatNumber(info.totalUnits) },
+    { label: 'TOP year', value: formatYear(info.topYear), mono: true },
+    { label: 'Tenure', value: formatText(info.tenure), mono: false },
+    { label: 'Total units', value: formatNumber(info.totalUnits), mono: true },
   ];
 
   return (
     <div className='space-y-4'>
       {info.enrichment === 'unavailable' && (
-        <p className='type-ui-sm text-ink-3'>
+        <p className='type-ui-sm text-muted'>
           Project details could not be loaded for this property. Only the listings below are
           available.
         </p>
@@ -29,7 +30,7 @@ export default function PropertyInfo({ info }: PropertyInfoProps) {
         {rows.map(row => (
           <div key={row.label}>
             <dt className='type-ui-eyebrow'>{row.label}</dt>
-            <dd className='type-ui-sm text-ink-2'>{row.value}</dd>
+            <dd className={cn('type-ui-sm text-body', row.mono && 'type-data')}>{row.value}</dd>
           </div>
         ))}
       </dl>

@@ -118,33 +118,30 @@ export default function PropertySearch() {
 
   return (
     <>
-      <div className='mx-auto max-w-5xl space-y-5 p-6'>
-        <div>
-          <h1 className='type-ui-h2 text-ink'>Property search</h1>
-          <p className='type-ui-caption'>
-            Scrape PropertyGuru for sale listings, grouped by property and unit type.
-          </p>
+      <div className='page-scroll'>
+        <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
+          <h1 className='type-ui-h1 text-strong'>Property search</h1>
+
+          <SearchFilterPanel
+            form={form}
+            onChange={setForm}
+            onSearch={runSearch}
+            isBusy={isStarting}
+          />
+
+          <SavedSearchesPanel
+            savedSearches={savedSearches}
+            isLoading={isLoadingSaved}
+            error={savedError}
+            runningSearchId={runningSearchId}
+            isStarting={isStarting}
+            onRun={runSavedSearch}
+            onEdit={setEditing}
+            onDelete={setDeleting}
+          />
+
+          {error && <SearchErrorPanel message={error} />}
         </div>
-
-        <SearchFilterPanel
-          form={form}
-          onChange={setForm}
-          onSearch={runSearch}
-          isBusy={isStarting}
-        />
-
-        <SavedSearchesPanel
-          savedSearches={savedSearches}
-          isLoading={isLoadingSaved}
-          error={savedError}
-          runningSearchId={runningSearchId}
-          isStarting={isStarting}
-          onRun={runSavedSearch}
-          onEdit={setEditing}
-          onDelete={setDeleting}
-        />
-
-        {error && <SearchErrorPanel message={error} />}
       </div>
 
       {editing && (

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { Button } from '../ui/button';
 import RegionQuickSelect from './RegionQuickSelect';
 import { DISTRICT_SHAPES, DISTRICT_VIEW_BOX } from '../../data/singaporeDistricts';
 
@@ -19,6 +18,8 @@ export interface DistrictMarker {
   y: number;
   /** Positioned by district rather than by its own coordinates, so drawn as approximate. */
   dimmed?: boolean;
+  /** The district holding it, which is what pins consolidate by while zoomed out. */
+  district?: string;
 }
 
 export interface DistrictMapProps {
@@ -50,11 +51,21 @@ const EMPTY_SELECTION: string[] = [];
 const MIN_SCALE = 1;
 const MAX_SCALE = 8;
 const ZOOM_SENSITIVITY = 0.002;
+/** One press of a zoom button, as a multiplier. */
+const ZOOM_STEP = 1.5;
+/** One press of a pan arrow, as a fraction of what is currently visible. */
+const PAN_STEP = 0.18;
 /** Total pointer travel below which a drag counts as a click rather than a pan. */
 const CLICK_TRAVEL_PX = 4;
 const VIEWPORT_DEBOUNCE_MS = 120;
 /** A district gets a label once `labelExtent * zoom` clears this. See DistrictShape. */
 const LABEL_MIN_EXTENT = 60;
+/**
+ * Below this, a district holding more than one property draws a single disc with the
+ * count. Above it every property gets its own pin. Zoomed out the pins overlap into an
+ * unreadable smear, and a count is the honest thing to draw instead.
+ */
+const PIN_SPLIT_SCALE = 2.4;
 
 function clamp(value: number, low: number, high: number) {
   return Math.min(high, Math.max(low, value));
@@ -95,8 +106,27 @@ function viewportOf(view: View): MapViewport | null {
   };
 }
 
+interface Pin {
+  key: string;
+  x: number;
+  y: number;
+  count: number;
+  dimmed: boolean;
+}
+
 /**
  * Singapore's 28 postal districts, pannable and zoomable, with optional pins.
+ *
+ * One component, mounted twice: the results rail and the search form's picker differ only
+ * in the model handed in, so both get the region buttons, the frame, the labels, the pins,
+ * the live region and the same controls.
+ *
+ * The frame and its control bar are one conjoined object. A single wrapper carries the
+ * border, the radius and `overflow:hidden`, and neither half carries a radius of its own,
+ * so the seam between them is a single hairline: the bar's top border when the pair is
+ * stacked, its left border when they sit side by side. Which of those happens is a 520px
+ * container query, so the same component reads correctly in a 360px rail and in a wide,
+ * shallow dialog.
  *
  * Selection is controlled, so the search form and the results page drive it the same way.
  * The component knows nothing about properties or filter state: callers project their own
@@ -240,10 +270,70 @@ export default function DistrictMap({
     if (code) toggleDistrict(code);
   };
 
+  /** Zoom about the middle of the frame, which is where the eye already is. */
+  const zoomTo = (nextK: number) =>
+    setView(current => {
+      const k = clamp(nextK, MIN_SCALE, MAX_SCALE);
+      const midX = VIEW_WIDTH / 2;
+      const midY = VIEW_HEIGHT / 2;
+      const contentX = (midX - current.x) / current.k;
+      const contentY = (midY - current.y) / current.k;
+      return clampView({ x: midX - contentX * k, y: midY - contentY * k, k });
+    });
+
+  const panBy = (dirX: number, dirY: number) =>
+    setView(current =>
+      clampView({
+        ...current,
+        x: current.x - (dirX * VIEW_WIDTH * PAN_STEP) / current.k,
+        y: current.y - (dirY * VIEW_HEIGHT * PAN_STEP) / current.k,
+      })
+    );
+
   const handleReset = () => {
     setView(DEFAULT_VIEW);
     onSelectionChange?.([]);
   };
+
+  const isAtRest = isDefaultView(view) && selected.length === 0;
+
+  // Zoomed out, a district holding several properties draws one disc with the count
+  // rather than a pile of overlapping dots; zoomed in, every property gets its own pin.
+  const pins = useMemo<Pin[]>(() => {
+    if (!markers?.length) return [];
+    const single = (marker: DistrictMarker): Pin => ({
+      key: marker.id,
+      x: marker.x,
+      y: marker.y,
+      count: 1,
+      dimmed: Boolean(marker.dimmed),
+    });
+    if (view.k >= PIN_SPLIT_SCALE) return markers.map(single);
+
+    const groups = new Map<string, DistrictMarker[]>();
+    const loose: Pin[] = [];
+    for (const marker of markers) {
+      if (!marker.district) {
+        loose.push(single(marker));
+        continue;
+      }
+      const group = groups.get(marker.district);
+      if (group) group.push(marker);
+      else groups.set(marker.district, [marker]);
+    }
+    const clustered = [...groups.entries()].map(([code, group]) =>
+      group.length === 1
+        ? single(group[0])
+        : {
+            key: `${code}-cluster`,
+            x: group.reduce((sum, marker) => sum + marker.x, 0) / group.length,
+            y: group.reduce((sum, marker) => sum + marker.y, 0) / group.length,
+            count: group.length,
+            dimmed: group.every(marker => marker.dimmed),
+          }
+    );
+    return [...clustered, ...loose];
+  }, [markers, view.k]);
 
   const summary = selected.length
     ? `${selected.length} district${selected.length === 1 ? '' : 's'} selected: ${selected
@@ -252,120 +342,227 @@ export default function DistrictMap({
     : 'No districts selected.';
 
   return (
-    <div className={className}>
+    <div className={cn('pp-map', className)}>
       {showQuickSelect && interactive ? (
-        <div className='mb-3'>
-          <RegionQuickSelect selected={selected} onChange={onSelectionChange!} />
-        </div>
+        <RegionQuickSelect selected={selected} onChange={onSelectionChange!} />
       ) : null}
 
-      <div className='overflow-hidden rounded-surface border border-line bg-panel'>
-        <svg
-          ref={svgRef}
-          viewBox={DISTRICT_VIEW_BOX}
-          preserveAspectRatio='xMidYMid meet'
-          className={cn(
-            'block w-full select-none',
-            interactive && 'cursor-grab active:cursor-grabbing'
-          )}
-          style={{ touchAction: 'none' }}
-          role='group'
-          aria-label='Singapore postal districts'
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={() => {
-            gestureRef.current = null;
-          }}
-        >
-          <g ref={layerRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-            {DISTRICT_SHAPES.map(shape => {
-              const isSelected = chosen.has(shape.code);
-              const isHovered = hovered === shape.code;
-              const name = districtNames?.[shape.code];
-              return (
-                <path
-                  key={shape.code}
-                  data-code={shape.code}
-                  d={shape.d}
-                  fill={isSelected ? 'var(--accent-soft)' : 'var(--panel-2)'}
-                  fillOpacity={isHovered && !isSelected ? 0.75 : 1}
-                  stroke={isSelected || isHovered ? 'var(--accent-line)' : 'var(--line)'}
-                  strokeWidth={1}
-                  // Hairlines stay hairlines at 8x, instead of turning into thick bands.
-                  vectorEffect='non-scaling-stroke'
-                  role={interactive ? 'button' : undefined}
-                  tabIndex={interactive ? 0 : undefined}
-                  aria-pressed={interactive ? isSelected : undefined}
-                  aria-label={name ? `${shape.code} ${name}` : shape.code}
-                  onMouseEnter={() => setHovered(shape.code)}
-                  onMouseLeave={() =>
-                    setHovered(current => (current === shape.code ? null : current))
-                  }
-                  onKeyDown={event => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    toggleDistrict(shape.code);
-                  }}
+      {/* One wrapper carries the border, the radius and the clip, so the frame and the
+          control bar read as a single object with a hairline seam between them. */}
+      <div className='pp-map__unit'>
+        {/* The container query is asked of this shell, not of the body: an element
+            cannot answer its own query, and putting it on the panel root would drop the
+            content's width contribution and collapse the column to nothing. */}
+        <div className='pp-map__shell'>
+          <div className='pp-map__body'>
+            <div
+              className='pp-map__frame'
+              style={{ aspectRatio: `${VIEW_WIDTH} / ${VIEW_HEIGHT}` }}
+            >
+              <svg
+                ref={svgRef}
+                viewBox={DISTRICT_VIEW_BOX}
+                preserveAspectRatio='xMidYMid meet'
+                className={cn(
+                  'block h-full w-full select-none',
+                  interactive && 'cursor-grab active:cursor-grabbing'
+                )}
+                style={{ touchAction: 'none' }}
+                role='group'
+                aria-label='Singapore postal districts'
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={() => {
+                  gestureRef.current = null;
+                }}
+              >
+                <g ref={layerRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+                  {DISTRICT_SHAPES.map(shape => {
+                    const isSelected = chosen.has(shape.code);
+                    const isHovered = hovered === shape.code;
+                    const name = districtNames?.[shape.code];
+                    return (
+                      <path
+                        key={shape.code}
+                        data-code={shape.code}
+                        d={shape.d}
+                        fill={
+                          isSelected
+                            ? 'var(--pp-map-sel)'
+                            : isHovered
+                              ? 'var(--pp-map-fill-hover)'
+                              : 'var(--pp-map-fill)'
+                        }
+                        // Never colour alone: a selected district also carries a heavier
+                        // stroke, so the selection survives a colour-blind reading.
+                        stroke={
+                          isSelected || isHovered ? 'var(--border-brand)' : 'var(--border-subtle)'
+                        }
+                        strokeWidth={isSelected ? 2 : 1}
+                        // Hairlines stay hairlines at 8x, instead of turning into thick bands.
+                        vectorEffect='non-scaling-stroke'
+                        role={interactive ? 'button' : undefined}
+                        tabIndex={interactive ? 0 : undefined}
+                        aria-pressed={interactive ? isSelected : undefined}
+                        aria-label={name ? `${shape.code} ${name}` : shape.code}
+                        onMouseEnter={() => setHovered(shape.code)}
+                        onMouseLeave={() =>
+                          setHovered(current => (current === shape.code ? null : current))
+                        }
+                        onKeyDown={event => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          toggleDistrict(shape.code);
+                        }}
+                      >
+                        <title>{name ? `${shape.code} ${name}` : shape.code}</title>
+                      </path>
+                    );
+                  })}
+
+                  {/* Labels and pins counter-scale, so they hold their on-screen size while
+                      the map grows underneath them. Non-interactive so they never intercept
+                      a gesture aimed at the district below. */}
+                  <g pointerEvents='none'>
+                    {DISTRICT_SHAPES.map(shape =>
+                      shape.labelExtent * view.k >= LABEL_MIN_EXTENT ? (
+                        <text
+                          key={shape.code}
+                          x={shape.labelAnchor[0]}
+                          y={shape.labelAnchor[1]}
+                          textAnchor='middle'
+                          dominantBaseline='middle'
+                          fontSize={13 / view.k}
+                          fill={chosen.has(shape.code) ? 'var(--text-brand)' : 'var(--text-muted)'}
+                        >
+                          {shape.code}
+                        </text>
+                      ) : null
+                    )}
+
+                    {pins.map(pin => (
+                      <g key={pin.key} opacity={pin.dimmed ? 0.45 : 1}>
+                        <circle
+                          cx={pin.x}
+                          cy={pin.y}
+                          r={(pin.count > 1 ? 9 : 4.5) / view.k}
+                          fill='var(--surface-brand)'
+                          stroke='var(--surface-card)'
+                          strokeWidth={1.5}
+                          vectorEffect='non-scaling-stroke'
+                        />
+                        {pin.count > 1 && (
+                          <text
+                            x={pin.x}
+                            y={pin.y}
+                            textAnchor='middle'
+                            dominantBaseline='central'
+                            fontSize={9 / view.k}
+                            fontWeight={700}
+                            fill='var(--action-primary-text)'
+                          >
+                            {pin.count}
+                          </text>
+                        )}
+                      </g>
+                    ))}
+                  </g>
+                </g>
+              </svg>
+            </div>
+
+            {/* The controls are structurally beside the map, never over it: at rail size
+                a floating cluster covers a fifth of the island and eclipses whole
+                districts, and no amount of pointer-events tuning fixes a control that is
+                physically on top of its target. */}
+            <div className='pp-map__bar'>
+              <div className='pp-map__zoom'>
+                <button
+                  type='button'
+                  className='pp-map__btn'
+                  aria-label='Zoom out'
+                  title='Zoom out'
+                  disabled={view.k <= MIN_SCALE}
+                  onClick={() => zoomTo(view.k / ZOOM_STEP)}
                 >
-                  <title>{name ? `${shape.code} ${name}` : shape.code}</title>
-                </path>
-              );
-            })}
-
-            {/* Labels and pins counter-scale, so they hold their on-screen size while the
-                map grows underneath them. Non-interactive so they never intercept a
-                gesture aimed at the district below. */}
-            <g pointerEvents='none'>
-              {DISTRICT_SHAPES.map(shape =>
-                shape.labelExtent * view.k >= LABEL_MIN_EXTENT ? (
-                  <text
-                    key={shape.code}
-                    x={shape.labelAnchor[0]}
-                    y={shape.labelAnchor[1]}
-                    textAnchor='middle'
-                    dominantBaseline='middle'
-                    fontSize={13 / view.k}
-                    fill={chosen.has(shape.code) ? 'var(--cyan)' : 'var(--ink-3)'}
-                  >
-                    {shape.code}
-                  </text>
-                ) : null
-              )}
-
-              {markers?.map(marker => (
-                <circle
-                  key={marker.id}
-                  cx={marker.x}
-                  cy={marker.y}
-                  r={4 / view.k}
-                  fill='var(--cyan)'
-                  fillOpacity={marker.dimmed ? 0.35 : 0.9}
-                  stroke='var(--accent-ink)'
-                  strokeWidth={0.8}
-                  vectorEffect='non-scaling-stroke'
+                  <Minus size={15} />
+                </button>
+                <input
+                  type='range'
+                  className='pp-map__slider'
+                  min={MIN_SCALE}
+                  max={MAX_SCALE}
+                  step={0.1}
+                  value={view.k}
+                  aria-label='Zoom'
+                  onChange={event => zoomTo(Number(event.target.value))}
                 />
-              ))}
-            </g>
-          </g>
-        </svg>
-      </div>
+                <button
+                  type='button'
+                  className='pp-map__btn'
+                  aria-label='Zoom in'
+                  title='Zoom in'
+                  disabled={view.k >= MAX_SCALE}
+                  onClick={() => zoomTo(view.k * ZOOM_STEP)}
+                >
+                  <Plus size={15} />
+                </button>
+              </div>
 
-      <div className='mt-2 flex flex-wrap items-center justify-between gap-2'>
-        <p className='type-ui-caption'>
-          {interactive
-            ? 'Click a district to filter. Drag to pan, scroll to zoom.'
-            : 'Drag to pan, scroll to zoom.'}
-        </p>
-        <Button
-          variant='ghost'
-          size='sm'
-          onClick={handleReset}
-          disabled={isDefaultView(view) && !selected.length}
-        >
-          <RotateCcw size={16} />
-          Reset map
-        </Button>
+              {/* Reset sits at the centre of the pan pad rather than in a footer of its
+                  own: it is the same action, and two of them is one too many. */}
+              <div className='pp-map__pad'>
+                <button
+                  type='button'
+                  className='pp-map__btn pp-map__pad-up'
+                  aria-label='Pan up'
+                  title='Pan up'
+                  onClick={() => panBy(0, -1)}
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  type='button'
+                  className='pp-map__btn pp-map__pad-left'
+                  aria-label='Pan left'
+                  title='Pan left'
+                  onClick={() => panBy(-1, 0)}
+                >
+                  <ArrowLeft size={15} />
+                </button>
+                <button
+                  type='button'
+                  className='pp-map__btn pp-map__pad-reset'
+                  aria-label='Reset map'
+                  title='Reset map'
+                  disabled={isAtRest}
+                  onClick={handleReset}
+                >
+                  <RotateCcw size={15} />
+                </button>
+                <button
+                  type='button'
+                  className='pp-map__btn pp-map__pad-right'
+                  aria-label='Pan right'
+                  title='Pan right'
+                  onClick={() => panBy(1, 0)}
+                >
+                  <ArrowRight size={15} />
+                </button>
+                <button
+                  type='button'
+                  className='pp-map__btn pp-map__pad-down'
+                  aria-label='Pan down'
+                  title='Pan down'
+                  onClick={() => panBy(0, 1)}
+                >
+                  <ArrowDown size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <p className='sr-only' aria-live='polite'>

@@ -56,23 +56,23 @@ export default function SavedSearchesPanel({
 
   return (
     <Card className='p-5'>
-      <h2 className='type-ui-h3 text-ink'>Saved searches</h2>
+      <h2 className='type-ui-h3 text-strong'>Saved searches</h2>
 
-      {error && <p className='mt-2 text-sm text-rose'>{error}</p>}
+      {error && <p className='mt-2 text-sm text-danger'>{error}</p>}
 
       {isLoading ? (
-        <div className='flex items-center gap-2 py-6 text-ink-3'>
+        <div className='flex items-center gap-2 py-6 text-muted'>
           <Spinner size='sm' />
           <p className='text-sm'>Loading saved searches</p>
         </div>
       ) : savedSearches.length === 0 ? (
-        <p className='type-ui-sm mt-2 text-ink-3'>
+        <p className='type-ui-sm mt-2 text-muted'>
           Nothing saved yet. Run a search, then press "Save search" on the results to keep its
           filters here.
         </p>
       ) : (
         <>
-          <p className='type-ui-sm mt-1 text-ink-3'>Click one to run it again.</p>
+          <p className='type-ui-sm mt-1 text-muted'>Click one to run it again.</p>
           <ul className='mt-4 divide-y divide-line-2 border-y border-line'>
             {savedSearches.map(search => {
               const listSummary = describeLists(search);
@@ -83,7 +83,7 @@ export default function SavedSearchesPanel({
                     'flex items-center justify-between gap-3 px-2 py-3 transition-colors',
                     isStarting
                       ? 'opacity-60'
-                      : 'cursor-pointer hover:bg-panel-2 focus-visible:shadow-[var(--ring)] focus-visible:outline-none'
+                      : 'cursor-pointer hover:bg-sunken focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none'
                   )}
                   role='link'
                   tabIndex={isStarting ? -1 : 0}
@@ -92,12 +92,12 @@ export default function SavedSearchesPanel({
                   onKeyDown={event => handleKeyDown(event, search)}
                 >
                   <div className='min-w-0'>
-                    <p className='truncate text-sm text-ink-2'>{search.name}</p>
-                    <p className='type-ui-sm truncate text-ink-3'>
+                    <p className='truncate text-sm text-body'>{search.name}</p>
+                    <p className='type-ui-sm truncate text-muted'>
                       {describeFilters(toFilterForm(search))}
                       {listSummary && ` (${listSummary})`}
                     </p>
-                    <p className='type-ui-sm truncate text-ink-3'>
+                    <p className='type-ui-sm truncate text-muted'>
                       {formatLastRun(search.lastRunAt)}
                     </p>
                   </div>

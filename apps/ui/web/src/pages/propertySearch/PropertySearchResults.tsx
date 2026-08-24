@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookmarkPlus, Eye, EyeOff, Pencil } from 'lucide-react';
+import { ArrowLeft, BookmarkPlus, Eye, EyeOff, Map, Pencil } from 'lucide-react';
 import { Card } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import Toast, { type ToastItem } from '../../components/ui/toast';
 import PropertyCard from '../../components/property/PropertyCard';
 import UnshortlistConfirmModal from '../../components/property/UnshortlistConfirmModal';
+import UnhideConfirmModal from '../../components/property/UnhideConfirmModal';
 import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
 import SaveSearchModal from './components/SaveSearchModal';
@@ -31,12 +32,15 @@ import type {
   PendingUnshortlist,
   Property,
 } from '../../types/listings';
+
+/** The hidden row waiting on an answer, and which list it would come off. */
+type PendingUnhide = { entity: HiddenEntity; isAlways: boolean };
 import { buildSearchRequest, describeFilters, DISTRICT_NAME_BY_CODE } from './utils/filterOptions';
 import { countUnpositioned, filterByMap, propertyPoint } from './utils/mapFilter';
 import type { MapViewport } from '../../components/map/DistrictMap';
 import { formatCurrency } from '../../lib/listingsFormat';
+import { cn } from '../../lib/utils';
 import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
-import { formatNewSince } from './utils/lastRun';
 
 /**
  * Search results - the scrape while it runs, then the properties it returned.
@@ -80,6 +84,16 @@ export default function PropertySearchResults() {
   const setBookmarked = usePropertySearchResultsStore(state => state.setBookmarked);
   const startJob = usePropertySearchResultsStore(state => state.startJob);
   const [showHidden, setShowHidden] = useState(false);
+  // The map rail starts open at every non-mobile width, which is what the split view is
+  // for. Below 768px the same flag drives the overlay drawer, which starts closed.
+  const [showMap, setShowMap] = useState(() => {
+    try {
+      return !window.matchMedia('(max-width: 767px)').matches;
+    } catch {
+      return true;
+    }
+  });
+  const [pendingUnhide, setPendingUnhide] = useState<PendingUnhide | null>(null);
   const [pendingHide, setPendingHide] = useState<PendingHide | null>(null);
   const [pendingUnshortlist, setPendingUnshortlist] = useState<PendingUnshortlist | null>(null);
   const [isNamingSearch, setIsNamingSearch] = useState(false);
@@ -94,6 +108,7 @@ export default function PropertySearchResults() {
   const [mapSelection, setMapSelection] = useState<string[]>([]);
   const [mapViewport, setMapViewport] = useState<MapViewport | null>(null);
   const [mappedResults, setMappedResults] = useState(results);
+  const allPropertyCount = results?.properties?.length ?? 0;
 
   // A fresh result set starts with the map wide open. Carrying the old view over would let
   // a search re-run for different districts come back looking empty, with only the count
@@ -104,6 +119,15 @@ export default function PropertySearchResults() {
     setMapSelection([]);
     setMapViewport(null);
   }
+
+  // The launcher and the assistant panel are fixed to the viewport's right edge, which
+  // is exactly where the rail is, so they are told to step aside for as long as it is
+  // open. A class rather than store state: the rail belongs to this route alone.
+  useEffect(() => {
+    const isRailOpen = showMap && allPropertyCount > 0;
+    document.body.classList.toggle('map-rail-open', isRailOpen);
+    return () => document.body.classList.remove('map-rail-open');
+  }, [showMap, allPropertyCount]);
 
   const addToast = useCallback((type: ToastItem['type'], message: string) => {
     const id = Date.now();
@@ -192,7 +216,15 @@ export default function PropertySearchResults() {
       mappableProperties.flatMap(property => {
         const point = propertyPoint(property);
         if (!point) return [];
-        return [{ id: property.propertyId, x: point.x, y: point.y, dimmed: point.approximate }];
+        return [
+          {
+            id: property.propertyId,
+            x: point.x,
+            y: point.y,
+            dimmed: point.approximate,
+            district: property.info.district ?? undefined,
+          },
+        ];
       }),
     [mappableProperties]
   );
@@ -444,148 +476,187 @@ export default function PropertySearchResults() {
   // sibling's margin would push its scrim down and leave a strip of page uncovered.
   return (
     <>
-      <div className='mx-auto max-w-5xl space-y-5 p-6'>
-        <div className='flex flex-wrap items-center justify-between gap-3'>
-          <div>
-            <Button variant='ghost' size='sm' onClick={backToSearch}>
-              <ArrowLeft size={16} />
-              Back to search
-            </Button>
-            <h1 className='type-ui-h2 mt-2 text-ink'>
-              {isRunning ? 'Searching' : 'Search results'}
-            </h1>
-            {savedSearchName && (
-              <>
-                <p className='type-ui-caption mt-1'>Saved search: {savedSearchName}</p>
-                <p className='type-ui-caption mt-1'>{formatNewSince(newSince)}</p>
-              </>
-            )}
-          </div>
-          {phase === 'ready' && (
-            <div className='flex flex-wrap items-center gap-2'>
-              {searchForm &&
-                (savedSearchId ? (
-                  <Button variant='outline' size='sm' onClick={() => setIsEditingSearch(true)}>
-                    <Pencil size={16} />
-                    Edit search
+      <div className='results-split'>
+        <div className='results-col'>
+          <div className='mx-auto w-full max-w-[1080px] space-y-5 px-6 pb-24 pt-7'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <Button variant='ghost' size='sm' onClick={backToSearch}>
+                  <ArrowLeft size={16} />
+                  Back to search
+                </Button>
+                <h1 className='type-ui-h1 mt-2 text-strong'>
+                  {isRunning ? 'Searching' : 'Search results'}
+                </h1>
+                {savedSearchName && (
+                  <p className='type-ui-caption mt-1'>Saved search: {savedSearchName}</p>
+                )}
+              </div>
+              {phase === 'ready' && (
+                <div className='flex flex-wrap items-center gap-2'>
+                  {searchForm &&
+                    (savedSearchId ? (
+                      <Button variant='outline' size='sm' onClick={() => setIsEditingSearch(true)}>
+                        <Pencil size={16} />
+                        Edit search
+                      </Button>
+                    ) : (
+                      <Button variant='outline' size='sm' onClick={() => setIsNamingSearch(true)}>
+                        <BookmarkPlus size={16} />
+                        Save search
+                      </Button>
+                    ))}
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => setShowHidden(current => !current)}
+                  >
+                    {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showHidden
+                      ? 'Hide the hidden items'
+                      : `Show hidden (${hiddenInResults.length + alwaysHiddenInResults.length})`}
                   </Button>
-                ) : (
-                  <Button variant='outline' size='sm' onClick={() => setIsNamingSearch(true)}>
-                    <BookmarkPlus size={16} />
-                    Save search
-                  </Button>
-                ))}
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => setShowHidden(current => !current)}
-              >
-                {showHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                {showHidden
-                  ? 'Hide the hidden items'
-                  : `Show hidden (${hiddenInResults.length + alwaysHiddenInResults.length})`}
-              </Button>
+                  {/* The rail's own header cannot bring it back once it is out of the flow,
+                  and below 768px it is off canvas entirely, so the one control that
+                  works at every width lives here beside the other view toggles. */}
+                  {allProperties.length > 0 && (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      aria-expanded={showMap}
+                      onClick={() => setShowMap(current => !current)}
+                    >
+                      <Map size={16} />
+                      {showMap ? 'Hide map' : 'Show map'}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {showHidden && phase === 'ready' && (
-          <HiddenPanel
-            hidden={hiddenInResults}
-            alwaysHidden={alwaysHiddenInResults}
-            error={hiddenError || alwaysHiddenError}
-            onUnhide={unhide}
-            onUnhideAlways={unhideAlways}
-          />
-        )}
-
-        {isRunning ? (
-          <ScrapeProgress
-            status={status?.status ?? 'queued'}
-            listingCount={status?.listingCount ?? 0}
-            pagesFetched={status?.pagesFetched ?? 0}
-            pagesTotal={status?.pagesTotal ?? 0}
-            detailsFetched={status?.detailsFetched ?? 0}
-            detailsTotal={status?.detailsTotal ?? 0}
-            note={status?.note}
-          />
-        ) : isFailed ? (
-          <SearchErrorPanel
-            message={errorMessage || 'The scrape failed before it returned any results.'}
-            detail={status?.errorDetail}
-          />
-        ) : expired ? (
-          <Card className='p-10 text-center'>
-            <p className='type-ui-title text-ink'>These results are no longer available</p>
-            <p className='type-ui-sm mt-1 text-ink-3'>
-              The scrape they came from has been cleared out. Go back to the search and run it
-              again.
-            </p>
-          </Card>
-        ) : (
-          <div className='space-y-4'>
-            {allProperties.length > 0 && (
-              <ResultsMapPanel
-                selected={mapSelection}
-                onSelectionChange={setMapSelection}
-                onViewportChange={setMapViewport}
-                markers={mapMarkers}
-                unpositionedCount={unpositionedCount}
-                isFiltering={isMapFiltering}
-                approximateCount={approximateCount}
+            {showHidden && phase === 'ready' && (
+              <HiddenPanel
+                hidden={hiddenInResults}
+                alwaysHidden={alwaysHiddenInResults}
+                error={hiddenError || alwaysHiddenError}
+                onUnhide={entity => setPendingUnhide({ entity, isAlways: false })}
+                onUnhideAlways={entity => setPendingUnhide({ entity, isAlways: true })}
               />
             )}
 
-            <p className='type-ui-caption'>
-              {results?.propertyCount ?? 0} properties and {results?.unitCount ?? 0} units found.{' '}
-              {visibleProperties.length} of {allProperties.length} properties shown.
-            </p>
-
-            {shortlistError && <p className='text-sm text-rose'>{shortlistError}</p>}
-            {bookmarkedError && <p className='text-sm text-rose'>{bookmarkedError}</p>}
-            {alwaysHiddenError && <p className='text-sm text-rose'>{alwaysHiddenError}</p>}
-
-            {results?.truncated && (
-              <p className='type-ui-sm text-ink-3'>
-                These results are partial. The scan covered {results.pagesScanned ?? 0} of{' '}
-                {results.totalPages ?? 0} result pages, so raise pages to scan or narrow your
-                filters to see the rest.
-              </p>
-            )}
-
-            {allProperties.length === 0 ? (
+            {isRunning ? (
+              <ScrapeProgress
+                status={status?.status ?? 'queued'}
+                listingCount={status?.listingCount ?? 0}
+                pagesFetched={status?.pagesFetched ?? 0}
+                pagesTotal={status?.pagesTotal ?? 0}
+                detailsFetched={status?.detailsFetched ?? 0}
+                detailsTotal={status?.detailsTotal ?? 0}
+                note={status?.note}
+              />
+            ) : isFailed ? (
+              <SearchErrorPanel
+                message={errorMessage || 'The scrape failed before it returned any results.'}
+                detail={status?.errorDetail}
+              />
+            ) : expired ? (
               <Card className='p-10 text-center'>
-                <p className='type-ui-title text-ink'>No properties matched</p>
-                <p className='type-ui-sm mt-1 text-ink-3'>
-                  Try widening the price range, adding districts, or scanning more pages.
-                </p>
-              </Card>
-            ) : visibleProperties.length === 0 ? (
-              <Card className='p-10 text-center'>
-                <p className='type-ui-title text-ink'>Every result is hidden</p>
-                <p className='type-ui-sm mt-1 text-ink-3'>
-                  Open the hidden items panel to bring a property back.
+                <p className='type-ui-title text-strong'>These results are no longer available</p>
+                <p className='type-ui-sm mt-1 text-muted'>
+                  The scrape they came from has been cleared out. Go back to the search and run it
+                  again.
                 </p>
               </Card>
             ) : (
-              visibleProperties.map(property => (
-                <PropertyCard
-                  key={`${results?.jobId}-${property.propertyId}`}
-                  property={property}
-                  shortlistedIds={shortlistedIds}
-                  onToggleShortlist={toggleShortlist}
-                  hiddenUnitIds={combinedHiddenUnitIds}
-                  onHideProperty={property => setPendingHide({ scope: 'property', property })}
-                  onHideUnit={(property, row) => setPendingHide({ scope: 'unit', property, row })}
-                  isBookmarked={bookmarkedPropertyIds.has(property.propertyId)}
-                  onToggleBookmark={toggleBookmark}
-                  newSince={newSince}
-                />
-              ))
+              <div className='space-y-4'>
+                <p className='type-ui-caption'>
+                  {results?.propertyCount ?? 0} properties and {results?.unitCount ?? 0} units
+                  found. {visibleProperties.length} of {allProperties.length} properties shown.
+                </p>
+
+                {shortlistError && <p className='text-sm text-danger'>{shortlistError}</p>}
+                {bookmarkedError && <p className='text-sm text-danger'>{bookmarkedError}</p>}
+                {alwaysHiddenError && <p className='text-sm text-danger'>{alwaysHiddenError}</p>}
+
+                {results?.truncated && (
+                  <p className='type-ui-sm text-muted'>
+                    These results are partial. The scan covered {results.pagesScanned ?? 0} of{' '}
+                    {results.totalPages ?? 0} result pages, so raise pages to scan or narrow your
+                    filters to see the rest.
+                  </p>
+                )}
+
+                {allProperties.length === 0 ? (
+                  <Card className='p-10 text-center'>
+                    <p className='type-ui-title text-strong'>No properties matched</p>
+                    <p className='type-ui-sm mt-1 text-muted'>
+                      Try widening the price range, adding districts, or scanning more pages.
+                    </p>
+                  </Card>
+                ) : visibleProperties.length === 0 ? (
+                  <Card className='p-10 text-center'>
+                    <p className='type-ui-title text-strong'>Every result is hidden</p>
+                    <p className='type-ui-sm mt-1 text-muted'>
+                      Open the hidden items panel to bring a property back.
+                    </p>
+                  </Card>
+                ) : (
+                  visibleProperties.map(property => (
+                    <PropertyCard
+                      key={`${results?.jobId}-${property.propertyId}`}
+                      property={property}
+                      shortlistedIds={shortlistedIds}
+                      onToggleShortlist={toggleShortlist}
+                      hiddenUnitIds={combinedHiddenUnitIds}
+                      onHideProperty={property => setPendingHide({ scope: 'property', property })}
+                      onHideUnit={(property, row) =>
+                        setPendingHide({ scope: 'unit', property, row })
+                      }
+                      isBookmarked={bookmarkedPropertyIds.has(property.propertyId)}
+                      onToggleBookmark={toggleBookmark}
+                      newSince={newSince}
+                    />
+                  ))
+                )}
+              </div>
             )}
           </div>
+        </div>
+
+        {/* The rail is a normal flex sibling at every non-mobile width, so the results
+            column shrinks to meet it. Below 768px it becomes an overlay drawer, which
+            is the only place an overlay is right: there is no width to share. */}
+        {allProperties.length > 0 && (
+          <>
+            <div
+              className={cn('results-rail-backdrop', showMap && 'is-open')}
+              onClick={() => setShowMap(false)}
+            />
+            <ResultsMapPanel
+              isOpen={showMap}
+              onClose={() => setShowMap(false)}
+              selected={mapSelection}
+              onSelectionChange={setMapSelection}
+              onViewportChange={setMapViewport}
+              markers={mapMarkers}
+              unpositionedCount={unpositionedCount}
+              isFiltering={isMapFiltering}
+              approximateCount={approximateCount}
+            />
+          </>
         )}
       </div>
+
+      <UnhideConfirmModal
+        pending={pendingUnhide?.entity ?? null}
+        isAlways={pendingUnhide?.isAlways ?? false}
+        onClose={() => setPendingUnhide(null)}
+        onConfirm={async () => {
+          if (!pendingUnhide) return;
+          if (pendingUnhide.isAlways) unhideAlways(pendingUnhide.entity.entityKey);
+          else unhide(pendingUnhide.entity.entityKey);
+        }}
+      />
 
       {/* Mounted only while it is open, so the always hide toggle inside it starts off
           on every hide rather than carrying the last answer over. */}
