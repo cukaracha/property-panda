@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { EyeOff, Heart, Ruler, Sparkles } from 'lucide-react';
+import { EyeOff, Heart, Images, Ruler, Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 import DataTable, { type Column } from '../tables/DataTable';
 import { isNewSince } from '../../lib/listingRows';
 import FloorplanModal from './FloorplanModal';
+import PhotoCarouselModal from './PhotoCarouselModal';
 import type { ListingRow } from '../../types/listings';
 import {
   formatCurrency,
@@ -36,19 +37,20 @@ export interface UnitsTableProps {
  * carries the buttons that must not do that. Hiding a row is reversible: it drops
  * out of the render, but the result set keeps it.
  *
- * The seven tracks below sum to 720px on their own, and box-sizing: border-box
+ * The seven tracks below sum to 764px on their own, and box-sizing: border-box
  * puts the cell padding inside each track rather than beside it. Each one is sized
  * for its longest real value, the "Not available" fallback and a four figure psf
  * included, so nothing is measured on the header alone. Bedrooms, Baths and Price
  * still need more than their track allows, so table-layout: auto widens them and
- * the wrapper starts scrolling nearer 770px. minWidth is a floor under that, not
- * the threshold itself.
+ * the wrapper starts scrolling a little past that. minWidth is a floor under it,
+ * not the threshold itself. The actions track is the four 32px icon buttons, the
+ * gaps between them and the cell's own padding.
  *
  * Hiding is dropped rather than disabled when the caller passes no handler, which
  * is how the shortlist reuses this table without a flag saying which screen it is on.
  *
- * The floorplan viewer is held here rather than lifted, because looking at one
- * touches no store and needs nothing the row does not already carry.
+ * The floorplan viewer and the photo carousel are held here rather than lifted,
+ * because looking at either touches no store.
  */
 export default function UnitsTable({
   rows,
@@ -59,6 +61,7 @@ export default function UnitsTable({
   emptyMessage = 'No units to show. They may all be hidden.',
 }: UnitsTableProps) {
   const [floorplanRow, setFloorplanRow] = useState<ListingRow | null>(null);
+  const [photoRow, setPhotoRow] = useState<ListingRow | null>(null);
 
   const openListing = (row: ListingRow) => {
     if (!row.url) return;
@@ -123,8 +126,8 @@ export default function UnitsTable({
         keyExtractor={row => String(row.listingId)}
         emptyMessage={emptyMessage}
         onRowClick={openListing}
-        minWidth='720px'
-        actionsWidth='128px'
+        minWidth='764px'
+        actionsWidth='172px'
         rowLabel={row =>
           isNewSince(row, newSince)
             ? `Open listing ${row.listingId}, new since the last run`
@@ -134,6 +137,18 @@ export default function UnitsTable({
           const isShortlisted = shortlistedIds.has(String(row.listingId));
           return (
             <>
+              {(row.photoCount ?? 0) > 0 && (
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='btn-sm hover:bg-brand-subtle hover:text-brand'
+                  title='View photos'
+                  aria-label={`View photos for unit ${row.listingId}`}
+                  onClick={() => setPhotoRow(row)}
+                >
+                  <Images size={16} />
+                </Button>
+              )}
               {(row.floorplans?.length ?? 0) > 0 && (
                 <Button
                   variant='ghost'
@@ -181,6 +196,7 @@ export default function UnitsTable({
         }}
       />
       <FloorplanModal row={floorplanRow} onClose={() => setFloorplanRow(null)} />
+      <PhotoCarouselModal row={photoRow} onClose={() => setPhotoRow(null)} />
     </div>
   );
 }

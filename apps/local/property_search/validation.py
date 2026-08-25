@@ -414,6 +414,9 @@ def clean_optional_search_id(search_id: str) -> str:
 LISTING_ID_MAX_CHARS = 64
 PROPERTY_ID_MAX_CHARS = 100
 MAX_FLOORPLANS = 20
+# Far higher than the floorplan cap, because a listing carries photos in a different
+# order of quantity: 36 was the most on any one card during the discovery capture.
+MAX_PHOTOS = 60
 
 
 def clean_url(value, field: str, max_chars: int = 500) -> str:
@@ -537,6 +540,7 @@ def clean_shortlist(body: dict) -> dict:
         "agentName": clean_text(body.get("agentName"), "agentName", 200),
         "agencyName": clean_text(body.get("agencyName"), "agencyName", 200),
         "floorplans": clean_url_list(body.get("floorplans"), "floorplans", MAX_FLOORPLANS),
+        "photos": clean_url_list(body.get("photos"), "photos", MAX_PHOTOS),
     }
 
 

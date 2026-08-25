@@ -8,6 +8,8 @@ no rework beyond pointing at this host instead of API Gateway:
                                          optional savedSearchId names the search it
                                          re-runs, whose last run is stamped on success
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
+    GET    /listings/photos/{id}      -> one listing's photos, asked for when a carousel
+                                         opens rather than carried with the results
     GET    /listings/saved-searches   -> the searches kept for re-running
     POST   /listings/saved-searches   -> save one, with the items it hides and pins
     PUT    /listings/saved-searches/{id} -> replace its name, request, hidden and pinned
@@ -172,6 +174,28 @@ def get_search_results(jobId: str = ""):
     return view
 
 
+@app.get("/listings/photos/{listing_id}")
+def get_listing_photos(listing_id: str):
+    """One listing's photos, fetched when its carousel opens.
+
+    They are kept out of the result payload on purpose, because there are far too many
+    per unit to carry there; see store.put_listing_photos. A unit row carries the count
+    alone, which is what decides whether this is ever asked for.
+    """
+    try:
+        listing_id = validation.clean_listing_id(listing_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    photos = store.get_listing_photos(listing_id)
+    if not photos:
+        # Nothing stored and something stored that has since aged out are the same answer
+        # from here, and from the page they are the same thing: an id this SPA holds can
+        # only have come off a result, so it is an expiry either way.
+        raise HTTPException(status_code=404, detail="Those photos are no longer available")
+    return {"photos": photos}
+
+
 @app.get("/listings/saved-searches")
 def list_saved_searches():
     """Every search kept for re-running, newest first."""
@@ -304,7 +328,13 @@ async def create_shortlist(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON in request body")
 
     try:
-        return store.put_shortlist(validation.clean_shortlist(body))
+        entry = validation.clean_shortlist(body)
+        # Hearting happens on the results screen, where the row knows how many photos the
+        # unit has but not what they are, so the snapshot is completed from the store
+        # rather than by sending the whole list up from the browser and straight back.
+        if not entry["photos"]:
+            entry["photos"] = store.get_listing_photos(entry["listingId"])
+        return store.put_shortlist(entry)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

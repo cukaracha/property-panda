@@ -143,6 +143,13 @@ def _build_unit(listing: dict) -> dict:
     Everything property-level (name, district, developer, tenure) is dropped here because
     it already sits once on the parent property. Carrying it per unit multiplied the
     payload by the number of listings for no gain.
+
+    The photos are read as two independent keys, which is what lets the one helper serve
+    both callers without knowing which one it is. A search result carries the count with
+    an empty list, because the photos themselves are far too bulky to send with every
+    unit and the scrape has already moved them into the store for the carousel to fetch.
+    A shortlisted unit carries the list, snapshotted with the rest of the listing, and
+    the count is derived from it.
     """
     return {
         "listingId": listing["listingId"],
@@ -156,6 +163,8 @@ def _build_unit(listing: dict) -> dict:
         "agentName": listing.get("agentName") or "",
         "agencyName": listing.get("agencyName") or "",
         "floorplans": listing.get("floorplans") or [],
+        "photos": listing.get("photos") or [],
+        "photoCount": listing.get("photoCount", len(listing.get("photos") or [])),
     }
 
 

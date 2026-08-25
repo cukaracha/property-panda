@@ -1,6 +1,6 @@
 """
-Persistence for the local scraper: the job rows, the property cache, the saved searches,
-the shortlist, the always hidden list and the result JSON.
+Persistence for the local scraper: the job rows, the property cache, the listing photos,
+the saved searches, the shortlist, the always hidden list and the result JSON.
 
 Everything lives in JSON files under `.data/` next to this module. The cloud version of
 this scraper used DynamoDB for the rows and S3 for the results; running on one machine
@@ -26,6 +26,7 @@ RESULTS_DIR = os.path.join(DATA_DIR, "results")
 
 JOBS_FILE = os.path.join(DATA_DIR, "jobs.json")
 PROPERTIES_FILE = os.path.join(DATA_DIR, "properties.json")
+LISTING_PHOTOS_FILE = os.path.join(DATA_DIR, "listing_photos.json")
 SAVED_SEARCHES_FILE = os.path.join(DATA_DIR, "saved_searches.json")
 SHORTLIST_FILE = os.path.join(DATA_DIR, "shortlist.json")
 ALWAYS_HIDDEN_FILE = os.path.join(DATA_DIR, "always_hidden.json")
@@ -37,6 +38,10 @@ PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 
 PROPERTY_FAIL_TTL_SECONDS = int(os.environ.get("PROPERTY_FAIL_TTL_SECONDS", str(24 * 3600)))
 # Jobs are kept only so a reload of the page can still poll the run that is in flight.
 JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_SECONDS", str(24 * 3600)))
+# Photos live exactly as long as the results that point at them. Nothing longer buys
+# anything: they ride along with search pages the scrape already fetches, so capturing
+# them again is free, which is the opposite of the project pages above.
+PHOTO_TTL_SECONDS = JOB_TTL_SECONDS
 # Saved searches never expire, so the list is capped instead. Well past what one
 # person keeps, and low enough that the file stays something you can read by hand.
 MAX_SAVED_SEARCHES = 50
@@ -109,6 +114,7 @@ def create_job(
         jobs = _read(JOBS_FILE)
         jobs[job_id] = row
         _write(JOBS_FILE, _without_expired(jobs, now))
+        _prune_listing_photos(now)
     return row
 
 
@@ -233,6 +239,56 @@ def put_property_cache(records: dict, failed=()):
         for property_id in failed:
             cache[str(property_id)] = {"failedAt": now}
         _write(PROPERTIES_FILE, cache)
+
+
+# -------------------------------------------------------------- listing photos
+
+
+def put_listing_photos(photos_by_listing: dict):
+    """Store one scrape's photo lists, keyed by listing id.
+
+    Photos are kept here rather than on the unit rows in the result payload. A listing
+    carries seventeen of them on average at around 120 characters each, so inlining them
+    would add megabytes to a result the browser holds in sessionStorage and re-serialises
+    on every change. The unit row carries the count instead, and the carousel asks for
+    the list when it opens.
+
+    One write per pass rather than one per listing, for the reason put_property_cache
+    gives.
+    """
+    if not photos_by_listing:
+        return
+    now = int(time.time())
+    with _lock:
+        entries = _read(LISTING_PHOTOS_FILE)
+        for listing_id, photos in photos_by_listing.items():
+            entries[str(listing_id)] = {"photos": photos, "capturedAt": now}
+        _write(LISTING_PHOTOS_FILE, entries)
+
+
+def get_listing_photos(listing_id: str) -> list:
+    """Return one listing's photos, or [] when they were never stored or have aged out."""
+    with _lock:
+        entry = _read(LISTING_PHOTOS_FILE).get(str(listing_id)) or {}
+    if int(time.time()) - int(entry.get("capturedAt") or 0) >= PHOTO_TTL_SECONDS:
+        return []
+    return entry.get("photos") or []
+
+
+def _prune_listing_photos(now: int):
+    """Drop the photo lists past their TTL. The caller holds the lock.
+
+    Swept on job creation, in the same pass the job rows are, so it can never run while
+    a scrape is still writing into this file.
+    """
+    entries = _read(LISTING_PHOTOS_FILE)
+    kept = {
+        listing_id: entry
+        for listing_id, entry in entries.items()
+        if now - int(entry.get("capturedAt") or 0) < PHOTO_TTL_SECONDS
+    }
+    if len(kept) != len(entries):
+        _write(LISTING_PHOTOS_FILE, kept)
 
 
 # --------------------------------------------------------------- saved searches

@@ -64,6 +64,20 @@ export interface Unit {
    * the scraper started keeping them have no key at all, so read it defensively.
    */
   floorplans?: string[];
+  /**
+   * How many photos the listing carries. Only the count rides along with a search
+   * result: a listing has far too many photos to put the URLs on every unit, so the
+   * carousel asks the server for them when it opens. Absent, like `floorplans`, on
+   * results cached before this existed.
+   */
+  photoCount?: number;
+  /**
+   * The photos themselves. Present only on a shortlisted unit, where they were
+   * snapshotted with the rest of the listing, and empty on a search result by design.
+   * The carousel prefers these when they are here, which is also what lets a shortlist
+   * outlive the day the server keeps the fetchable copy for.
+   */
+  photos?: string[];
 }
 
 export interface UnitType {
@@ -212,6 +226,12 @@ export interface ShortlistPayload {
   agentName: string | null;
   agencyName: string | null;
   floorplans?: string[];
+  /**
+   * Left out by the results screen, which knows the count but not the URLs. The server
+   * fills them in from its own copy, so the snapshot is complete without the whole list
+   * going up from the browser and straight back.
+   */
+  photos?: string[];
 }
 
 /**
@@ -229,6 +249,11 @@ export interface ShortlistResponse {
   unitCount: number;
   /** Flat, so the results screen can fill its hearts without walking the tree. */
   listingIds: string[];
+}
+
+/** One listing's photos, asked for when its carousel opens. */
+export interface ListingPhotosResponse {
+  photos: string[];
 }
 
 export interface SearchFilters {

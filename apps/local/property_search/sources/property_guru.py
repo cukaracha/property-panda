@@ -22,6 +22,19 @@ Search results page
                                    search page, so no project-page fetch is needed for them.
                                    `caption` repeats one SEO string across every item in a
                                    listing, so it cannot tell two plans apart and is dropped.
+                                   mediaCarousel.previewMedia.images.items[]{caption,src}
+                                   -- the listing's photos, in the same place and read the
+                                   same way. Despite the name, `previewMedia` is not a
+                                   truncated set: each card also carries mediaItems[] with
+                                   the site's own displayed count ({"mediaType": "images",
+                                   "text": "36"}), and that matched len(items) on 20 of 20
+                                   organic cards over a 3-36 range, with no cap and no
+                                   clustering at the top. The listing's own detail page is
+                                   the worse source and is deliberately not read: it is a
+                                   different app that server-renders only about ten of the
+                                   ids for a gallery it lazy loads, and reaching it would
+                                   cost a real navigation rather than the cheap in-page
+                                   fetch a search page already gets.
         [].segment.parameters.metaData.listingData
                                 -> district, districtName, regionName, tenure, projectId,
                                    propertyType, property{developerName}, adProduct
@@ -295,6 +308,7 @@ class PropertyGuruSource:
         posted = listing.get("postedOn") or {}
         media = (listing.get("mediaCarousel") or {}).get("previewMedia") or {}
         plans = (media.get("floorPlans") or {}).get("items") or []
+        photos = (media.get("images") or {}).get("items") or []
 
         return {
             "listingId": int(listing_id),
@@ -315,6 +329,7 @@ class PropertyGuruSource:
             "agencyName": (listing.get("agency") or {}).get("name") or "",
             # Only the src: see the module docstring on why `caption` is useless here.
             "floorplans": [plan.get("src") for plan in plans if plan.get("src")],
+            "photos": [photo.get("src") for photo in photos if photo.get("src")],
             "district": meta.get("district") or "",
             "districtName": meta.get("districtName") or "",
             "regionName": meta.get("regionName") or "",

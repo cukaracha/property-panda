@@ -170,6 +170,26 @@ def _listing_matches(listing: dict, filters: dict) -> bool:
     return True
 
 
+def store_listing_photos(listings: list):
+    """Move each listing's photos into the store, leaving the count behind on the listing.
+
+    The photos are what the carousel renders and there are enough of them that carrying
+    them through the result payload would add megabytes to what the browser then holds.
+    The unit row keeps the count alone, which is all the table needs in order to know
+    whether there is anything worth opening.
+
+    After the filter check, so a listing that never belonged to this search does not take
+    up room in the store on its way out.
+    """
+    photos_by_listing = {}
+    for listing in listings:
+        photos = listing.pop("photos", None) or []
+        listing["photoCount"] = len(photos)
+        if photos:
+            photos_by_listing[listing["listingId"]] = photos
+    store.put_listing_photos(photos_by_listing)
+
+
 def keep_matching_properties(properties: list, filters: dict) -> list:
     """Drop the properties whose TOP year falls outside the search's TOP range.
 
@@ -294,6 +314,7 @@ def run_job(job: dict) -> dict:
         store.update_status(job_id, "enriching", listingCount=len(listings))
         properties_cache = enrich_properties(session, source, listings, on_progress=details)
 
+    store_listing_photos(listings)
     properties = keep_matching_properties(
         grouping.group_listings(listings, properties_cache), filters
     )

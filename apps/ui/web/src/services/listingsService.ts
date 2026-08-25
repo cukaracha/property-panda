@@ -26,6 +26,7 @@ import type {
   BookmarkedEntity,
   HiddenEntity,
   HiddenScope,
+  ListingPhotosResponse,
   ListSavedSearchesResponse,
   MutationResponse,
   SavedSearch,
@@ -89,6 +90,19 @@ export async function getSearchResults(jobId: string): Promise<SearchResultsResp
   const response = await fetch(`${API_URL}/listings/results?jobId=${encodeURIComponent(jobId)}`);
   const data = await readBody<SearchResultsResponse>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to get the search results');
+  return data;
+}
+
+/**
+ * One listing's photos, asked for when its carousel opens rather than carried with the
+ * results. A listing has enough of them that putting the URLs on every unit would add
+ * megabytes to a payload the browser keeps in sessionStorage and rewrites on every
+ * change, so the unit row carries the count alone and this fills in the rest.
+ */
+export async function fetchListingPhotos(listingId: string): Promise<ListingPhotosResponse> {
+  const response = await fetch(`${API_URL}/listings/photos/${encodeURIComponent(listingId)}`);
+  const data = await readBody<ListingPhotosResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to load the photos');
   return data;
 }
 
