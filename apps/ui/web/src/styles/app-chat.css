@@ -91,6 +91,16 @@
     box-shadow: var(--shadow-xl);
   }
 
+  /* Both surfaces are fixed above every modal scrim, so the shell hides whichever is
+     showing while one is open. visibility rather than an unmount: the panel holds the
+     transcript, the composer draft and any in-flight turn in its own state, and this
+     leaves all three running behind the scrim while taking it out of the paint, the
+     hit test and the tab order. */
+  .cb-hidden {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   @keyframes assistant-rise {
     from {
       opacity: 0;

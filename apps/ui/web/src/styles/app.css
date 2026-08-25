@@ -1004,15 +1004,17 @@
 
   /* ==========================================================
      DISTRICT MAP — one framed object with its controls on glass
-     inside it. The unit carries the border, the radius and the clip,
-     and is the query container: an element cannot answer its own
-     query, and the unit is the frame's width to within a hairline.
-     Above 520px the panel pins to the frame's right edge as a column;
-     below it, to the frame's bottom edge as a row. The frame keeps a
-     padding band at every size, so the map never touches its border
-     and the panel has empty ground to sit on at the default fit.
+     inside it. The unit carries the border, the radius and the clip.
+     The frame reserves a band below the canvas exactly the height of
+     the control panel, so at the default fit the panel sits on ground
+     of its own rather than over a district. One bar, one anchor, one
+     size: both mounts get the identical overlay.
      ========================================================== */
   .pp-map {
+    /* The panel's own height: three pan rows at 22px, plus 6px of padding top and
+       bottom and a hairline each side. The frame's reserved band is computed from
+       the same value, so the two cannot drift apart. */
+    --pp-map-controls-h: 80px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1033,36 +1035,55 @@
     min-height: 0;
   }
   .pp-map--fill .pp-map__frame {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
+  }
+  .pp-map--fill .pp-map__canvas {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
     aspect-ratio: auto;
   }
   .pp-map__unit {
-    container-type: inline-size;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     overflow: hidden;
     background: var(--surface-sunken);
   }
-  /* The frame's layout lives here, never inline: an inline style would outrank both
-     the container query and the fill rule. Only the ratio comes from the SVG's own
-     viewBox, and it arrives as a custom property for the same reason. */
+  /* The bottom padding is the panel's height plus 8px of air, which is what keeps the
+     glass off the map at the default fit. The ratio belongs to the canvas rather than
+     here: aspect-ratio sizes the border box, so a frame carrying both a ratio and a
+     reserved band would squash the map into whatever the band left over. */
   .pp-map__frame {
     position: relative;
     width: 100%;
-    aspect-ratio: var(--pp-map-ar);
-    padding: 10px;
+    padding: 10px 10px calc(10px + var(--pp-map-controls-h) + 8px);
     background: var(--surface-sunken);
+  }
+  /* The frame's layout lives here, never inline: an inline style would outrank the
+     fill rule. Only the ratio comes from the SVG's own viewBox, and it arrives as a
+     custom property for the same reason. */
+  .pp-map__canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: var(--pp-map-ar);
   }
   .pp-map__controls {
     position: absolute;
     left: 10px;
     right: 10px;
     bottom: 10px;
+    /* A percentage resolves against the frame's padding box, so the calc holds the
+       10px band on both sides and the bar shrinks rather than overflowing once the
+       drawer is narrower than 320px. Setting both insets alongside a definite width
+       over-constrains the box, which the auto margins settle by centring it. */
+    width: min(300px, calc(100% - 20px));
+    margin-inline: auto;
+    height: var(--pp-map-controls-h);
     display: flex;
-    /* Reversed, so the pan pad reads first in the DOM (it leads the column at wide
-       sizes) while still sitting to the right of the slider in the strip. */
-    flex-direction: row-reverse;
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
@@ -1089,11 +1110,16 @@
     accent-color: var(--bamboo-600);
     cursor: pointer;
   }
+  /* The pad stands the full inner height of the panel, so its own left edge divides the
+     two groups. 8px of padding beside the 8px flex gap leaves the line centred in the
+     space between them. */
   .pp-map__pad {
     flex: none;
     display: grid;
     grid-template-columns: repeat(3, 26px);
     grid-template-rows: repeat(3, 22px);
+    padding-left: 8px;
+    border-left: 1px solid var(--border-subtle);
   }
   .pp-map__pad-up {
     grid-area: 1 / 2;
@@ -1130,26 +1156,6 @@
   .pp-map__btn:disabled {
     color: var(--action-disabled-text);
     cursor: default;
-  }
-
-  @container (min-width: 520px) {
-    /* 134px is the width the bar held before it became glass, which is what gives the
-       slider a usable run under the 78px pan pad. */
-    .pp-map__controls {
-      left: auto;
-      right: 10px;
-      bottom: auto;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 134px;
-      flex-direction: column;
-      gap: 10px;
-      padding: 8px;
-    }
-    .pp-map__zoom {
-      flex: none;
-      width: 100%;
-    }
   }
 
   /* ==========================================================

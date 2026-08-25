@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Sparkles, RotateCcw, ChevronDown } from 'lucide-react';
 import { ASSISTANT_NAME } from '../../config/app';
+import { cn } from '../../lib/utils';
 
 export interface AssistantPanelProps {
   /** Accepted so callers need not change, but the subline no longer names a screen. */
@@ -11,6 +12,8 @@ export interface AssistantPanelProps {
   onClose: () => void;
   /** Composer node, rendered in the footer. */
   composer?: ReactNode;
+  /** Takes the panel out of the paint, the hit test and the tab order. See .cb-hidden. */
+  isHidden?: boolean;
   children?: ReactNode;
 }
 
@@ -22,9 +25,19 @@ export interface AssistantPanelProps {
  * The subline no longer names the screen. The assistant is still handed the current
  * screen's context on every turn; the header simply stopped repeating it.
  */
-export function AssistantPanel({ onNewChat, onClose, composer, children }: AssistantPanelProps) {
+export function AssistantPanel({
+  onNewChat,
+  onClose,
+  composer,
+  children,
+  isHidden,
+}: AssistantPanelProps) {
   return (
-    <div className='cb-panel cb-anim' role='dialog' aria-label={`${ASSISTANT_NAME} assistant`}>
+    <div
+      className={cn('cb-panel cb-anim', isHidden && 'cb-hidden')}
+      role='dialog'
+      aria-label={`${ASSISTANT_NAME} assistant`}
+    >
       <div className='cb-head'>
         <span className='cb-head__avatar' aria-hidden='true'>
           <Sparkles size={14} />

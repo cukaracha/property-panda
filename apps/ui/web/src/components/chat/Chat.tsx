@@ -15,7 +15,16 @@ import { AssistantComposer } from '../assistant/AssistantComposer';
 // page, so the thread survives a reload and does not fork per surface.
 const CHAT_SESSION_KEY = 'chat:session:properties';
 
-const Chat: React.FC = () => {
+export interface ChatProps {
+  /**
+   * Hides the panel rather than unmounting it. The engine holds the transcript, the
+   * composer draft and any in-flight turn in state here, so an unmount would drop all
+   * three the moment a modal opened.
+   */
+  isHidden?: boolean;
+}
+
+const Chat: React.FC<ChatProps> = ({ isHidden }) => {
   const { isChatOpen, closeChat, scope } = useAiModeStore();
   const {
     messages,
@@ -39,6 +48,7 @@ const Chat: React.FC = () => {
   return (
     <AssistantPanel
       scope={scope}
+      isHidden={isHidden}
       onNewChat={handleNewChat}
       onClose={closeChat}
       composer={

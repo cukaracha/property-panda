@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useModalStackStore } from '../../store/useModalStackStore';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -26,15 +27,6 @@ export interface ModalProps {
    */
   dismissible?: boolean;
 }
-
-/**
- * Ids of every open modal, innermost last.
- *
- * Escape is listened for on `document`, so without this every open modal answers the same
- * keypress and a modal opened from inside another closes both -- taking the outer one's
- * unsaved draft with it. Only the topmost may respond.
- */
-const openModals: string[] = [];
 
 /**
  * Card (radius 20) centred over a blurred scrim, with dialog semantics: it is a
@@ -63,18 +55,20 @@ export default function Modal({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !dismissible) return;
-      if (openModals[openModals.length - 1] !== modalId) return;
+      const { ids } = useModalStackStore.getState();
+      if (ids[ids.length - 1] !== modalId) return;
       onClose();
     },
     [onClose, dismissible, modalId]
   );
 
+  // getState rather than a subscription: nothing drawn here depends on the stack, and a
+  // subscribing modal would re-render every time any other one opened or closed.
   useEffect(() => {
     if (!isOpen) return;
-    openModals.push(modalId);
+    useModalStackStore.getState().push(modalId);
     return () => {
-      const index = openModals.lastIndexOf(modalId);
-      if (index !== -1) openModals.splice(index, 1);
+      useModalStackStore.getState().pop(modalId);
     };
   }, [isOpen, modalId]);
 

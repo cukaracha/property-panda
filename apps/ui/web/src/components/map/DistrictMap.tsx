@@ -127,10 +127,10 @@ interface Pin {
  * in the model handed in, so both get the region buttons, the frame, the labels, the pins,
  * the live region and the same controls.
  *
- * The controls ride on glass inside the frame rather than in a bar beside it, and the
- * panel reflows on a 520px container query: pinned to the frame's right edge when the
- * frame is wide, dropped to its bottom edge when it is narrow. One rule serves both
- * mounts, so the same component reads correctly in a 360px rail and in a wide dialog.
+ * The controls ride on glass inside the frame rather than in a bar beside it: one bar,
+ * one anchor, one size, defined once and identical in both mounts. The frame reserves a
+ * band below the canvas exactly as tall as that bar, so the same component reads the
+ * same way in a 360px rail and in a wide dialog, and the map is never covered at rest.
  *
  * Selection is controlled, so the search form and the results page drive it the same way.
  * The component knows nothing about properties or filter state: callers project their own
@@ -365,11 +365,10 @@ export default function DistrictMap({
         <RegionQuickSelect selected={selected} onChange={onSelectionChange!} />
       ) : null}
 
-      {/* The unit carries the border, the radius and the clip, and answers the 520px
-          container query on behalf of the controls inside it: an element cannot answer
-          its own query, and the unit is the frame's width to within a hairline.
-          The ratio rides a custom property rather than an inline aspect-ratio, so the
-          fill variant's rule can turn it off -- an inline style would outrank it. */}
+      {/* The unit carries the border, the radius and the clip; the frame inside it
+          carries the padding, the reserved control band and the map itself. The ratio
+          rides a custom property rather than an inline aspect-ratio on the canvas, so
+          the fill variant's rule can turn it off -- an inline style would outrank it. */}
       <div className='pp-map__unit'>
         <div
           className='pp-map__frame'
@@ -380,7 +379,7 @@ export default function DistrictMap({
             viewBox={DISTRICT_VIEW_BOX}
             preserveAspectRatio='xMidYMid meet'
             className={cn(
-              'block h-full w-full select-none',
+              'pp-map__canvas select-none',
               interactive && 'cursor-grab active:cursor-grabbing'
             )}
             style={{ touchAction: 'none' }}
@@ -509,9 +508,43 @@ export default function DistrictMap({
           {/* Glass over the map rather than a bar beside it, and a sibling of the svg
               rather than a child of it: a gesture that starts on the panel never reaches
               the pan handler, so no pointer-events tuning is needed to keep the two
-              apart. The frame keeps a padding band at every size, so at the default fit
-              the panel sits over empty water rather than over a district. */}
+              apart. The frame reserves a band below the canvas as tall as this panel,
+              so at the default fit it sits on ground of its own rather than over a
+              district; zoomed in it overlays the map, which is what glass is for. */}
           <div className='pp-map__controls'>
+            <div className='pp-map__zoom'>
+              <button
+                type='button'
+                className='pp-map__btn'
+                aria-label='Zoom out'
+                title='Zoom out'
+                disabled={view.k <= MIN_SCALE}
+                onClick={() => zoomTo(view.k / ZOOM_STEP)}
+              >
+                <Minus size={15} />
+              </button>
+              <input
+                type='range'
+                className='pp-map__slider'
+                min={MIN_SCALE}
+                max={MAX_SCALE}
+                step={0.1}
+                value={view.k}
+                aria-label='Zoom'
+                onChange={event => zoomTo(Number(event.target.value))}
+              />
+              <button
+                type='button'
+                className='pp-map__btn'
+                aria-label='Zoom in'
+                title='Zoom in'
+                disabled={view.k >= MAX_SCALE}
+                onClick={() => zoomTo(view.k * ZOOM_STEP)}
+              >
+                <Plus size={15} />
+              </button>
+            </div>
+
             <div className='pp-map__pad'>
               <button
                 type='button'
@@ -560,39 +593,6 @@ export default function DistrictMap({
                 onClick={() => panBy(0, 1)}
               >
                 <ArrowDown size={15} />
-              </button>
-            </div>
-
-            <div className='pp-map__zoom'>
-              <button
-                type='button'
-                className='pp-map__btn'
-                aria-label='Zoom out'
-                title='Zoom out'
-                disabled={view.k <= MIN_SCALE}
-                onClick={() => zoomTo(view.k / ZOOM_STEP)}
-              >
-                <Minus size={15} />
-              </button>
-              <input
-                type='range'
-                className='pp-map__slider'
-                min={MIN_SCALE}
-                max={MAX_SCALE}
-                step={0.1}
-                value={view.k}
-                aria-label='Zoom'
-                onChange={event => zoomTo(Number(event.target.value))}
-              />
-              <button
-                type='button'
-                className='pp-map__btn'
-                aria-label='Zoom in'
-                title='Zoom in'
-                disabled={view.k >= MAX_SCALE}
-                onClick={() => zoomTo(view.k * ZOOM_STEP)}
-              >
-                <Plus size={15} />
               </button>
             </div>
           </div>
