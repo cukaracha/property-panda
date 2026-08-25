@@ -17,6 +17,11 @@ export interface PropertyCardProps {
   onToggleShortlist: (property: Property, row: ListingRow) => void;
   /** Both absent on the shortlist screen, which has no result set to hide anything from. */
   hiddenUnitIds?: Set<string>;
+  /**
+   * Units the results filter took off this card, kept apart from the hidden ones because
+   * they are left out for a different reason and come back a different way.
+   */
+  filteredUnitIds?: Set<string>;
   onHideProperty?: (property: Property) => void;
   onHideUnit?: (property: Property, row: ListingRow) => void;
   /** Also absent there, since a bookmark pins a card to the top of a result set. */
@@ -34,13 +39,33 @@ export interface PropertyCardProps {
 }
 
 /**
+ * Why the table is shorter than the property is, in one line.
+ *
+ * Both counts land on the same line when both apply, rather than stacking two
+ * sentences under a table that is already short: they answer the same question.
+ */
+function unitFootnote(hiddenCount: number, filteredCount: number): string {
+  if (hiddenCount > 0 && filteredCount > 0) {
+    return `${hiddenCount} ${hiddenCount === 1 ? 'unit is' : 'units are'} hidden and ${filteredCount} ${filteredCount === 1 ? 'does' : 'do'} not match the filters.`;
+  }
+  if (hiddenCount > 0) {
+    return `${hiddenCount} hidden ${hiddenCount === 1 ? 'unit is' : 'units are'} not shown.`;
+  }
+  if (filteredCount > 0) {
+    return `${filteredCount} ${filteredCount === 1 ? 'unit does' : 'units do'} not match the filters.`;
+  }
+  return '';
+}
+
+/**
  * One property: the project identity, the project level facts, and every listing
  * in it as one table. Nothing is behind a tab, so a card can be read top to
  * bottom and the assistant is never told about a table the user cannot see.
  *
  * Hidden units drop out at render time and are counted under the table, because
  * a table that is short only because rows are hidden otherwise reads as a
- * property with few units for sale.
+ * property with few units for sale. Units the results filter left out are counted
+ * the same way and for the same reason, on the same line.
  *
  * The hide and bookmark affordances are dropped rather than disabled when the screen
  * passes no handler, which is how the shortlist renders the same card without a flag
@@ -71,6 +96,7 @@ export default function PropertyCard({
   shortlistedIds,
   onToggleShortlist,
   hiddenUnitIds,
+  filteredUnitIds,
   onHideProperty,
   onHideUnit,
   isBookmarked,
@@ -82,8 +108,14 @@ export default function PropertyCard({
   const [imageFailed, setImageFailed] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
   const rows = toListingRows(property, newSince);
-  const visibleRows = rows.filter(row => !hiddenUnitIds?.has(String(row.listingId)));
-  const hiddenCount = rows.length - visibleRows.length;
+  const hiddenCount = rows.filter(row => hiddenUnitIds?.has(String(row.listingId))).length;
+  const visibleRows = rows.filter(
+    row =>
+      !hiddenUnitIds?.has(String(row.listingId)) && !filteredUnitIds?.has(String(row.listingId))
+  );
+  const filteredCount = rows.length - visibleRows.length - hiddenCount;
+
+  const footnote = unitFootnote(hiddenCount, filteredCount);
 
   const hasImage = Boolean(property.info.imageUrl) && !imageFailed;
   const canOpenPhotos = hasImage && (property.info.photoCount ?? 0) > 0;
@@ -190,11 +222,7 @@ export default function PropertyCard({
         />
       </div>
 
-      {hiddenCount > 0 && (
-        <p className='type-ui-caption mt-2'>
-          {hiddenCount} hidden {hiddenCount === 1 ? 'unit is' : 'units are'} not shown.
-        </p>
-      )}
+      {footnote && <p className='type-ui-caption mt-2'>{footnote}</p>}
 
       <PropertyPhotosModal
         property={photosOpen ? property : null}

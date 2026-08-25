@@ -16,6 +16,13 @@ export interface FilterChipGroupProps<T extends string | number> {
   onToggle: (value: T) => void;
   /** Optional control rendered on the label row, for a second way into the same filter. */
   action?: ReactNode;
+  /**
+   * Values there is nothing to choose. Set only where the choices are bounded by data
+   * already on screen, as on the results filter: a chip that would match nothing is
+   * shown greyed rather than dropped, so the row still reads as the whole range of the
+   * filter and the absence is itself the answer.
+   */
+  unavailable?: T[];
 }
 
 /**
@@ -33,6 +40,7 @@ export default function FilterChipGroup<T extends string | number>({
   selected,
   onToggle,
   action,
+  unavailable,
 }: FilterChipGroupProps<T>) {
   return (
     <div>
@@ -43,17 +51,25 @@ export default function FilterChipGroup<T extends string | number>({
       <div className='flex flex-wrap gap-2'>
         {options.map(option => {
           const isSelected = selected.includes(option.value);
+          const isUnavailable = unavailable?.includes(option.value) ?? false;
           return (
             <button
               key={option.value}
               type='button'
-              title={option.title}
+              disabled={isUnavailable}
+              title={
+                isUnavailable
+                  ? `${option.title ?? option.label} (not in these results)`
+                  : option.title
+              }
               aria-pressed={isSelected}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-sm font-medium transition-colors',
-                isSelected
-                  ? 'border-line-brand bg-brand-subtle text-brand'
-                  : 'border-line text-muted hover:bg-sunken hover:text-strong'
+                isUnavailable
+                  ? 'cursor-not-allowed border-line-2 text-subtle opacity-60'
+                  : isSelected
+                    ? 'border-line-brand bg-brand-subtle text-brand'
+                    : 'border-line text-muted hover:bg-sunken hover:text-strong'
               )}
               onClick={() => onToggle(option.value)}
             >

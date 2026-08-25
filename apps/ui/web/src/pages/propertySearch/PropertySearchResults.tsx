@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookmarkPlus, Eye, EyeOff, Map, Pencil } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookmarkPlus,
+  Eye,
+  EyeOff,
+  FilterX,
+  ListFilter,
+  Map,
+  Pencil,
+} from 'lucide-react';
 import { Card } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import Toast, { type ToastItem } from '../../components/ui/toast';
 import PropertyCard from '../../components/property/PropertyCard';
@@ -11,6 +21,7 @@ import HiddenPanel from './components/HiddenPanel';
 import HideConfirmModal from './components/HideConfirmModal';
 import SaveSearchModal from './components/SaveSearchModal';
 import EditSearchModal from './components/EditSearchModal';
+import ResultsFilterModal from './components/ResultsFilterModal';
 import ResultsMapPanel from './components/ResultsMapPanel';
 import ScrapeProgress from './components/ScrapeProgress';
 import SearchErrorPanel from './components/SearchErrorPanel';
@@ -35,8 +46,14 @@ import type {
 
 /** The hidden row waiting on an answer, and which list it would come off. */
 type PendingUnhide = { entity: HiddenEntity; isAlways: boolean };
-import { buildSearchRequest, describeFilters, DISTRICT_NAME_BY_CODE } from './utils/filterOptions';
+import {
+  buildSearchRequest,
+  DEFAULT_FILTER_FORM,
+  describeFilters,
+  DISTRICT_NAME_BY_CODE,
+} from './utils/filterOptions';
 import { countUnpositioned, filterByMap, propertyPoint } from './utils/mapFilter';
+import { countResultFilters, filterResults, resultFacets } from './utils/resultsFilter';
 import type { MapViewport } from '../../components/map/DistrictMap';
 import { formatCurrency } from '../../lib/listingsFormat';
 import { cn } from '../../lib/utils';
@@ -69,6 +86,11 @@ import { resultEntityKeys, toListingRows } from '../../lib/listingRows';
  * held in plain component state and starts over with each result set. Changing the
  * districts a saved search covers is Edit search's job, since that has to re-run the
  * scrape to mean anything.
+ *
+ * Filter listings is the same kind of thing over the same result set, offering the rest
+ * of the filter groups the payload can answer. Districts are the one field the two share,
+ * so they share one piece of state rather than each keeping their own: selecting a
+ * district in the panel moves the map, and moving the map moves the chips.
  */
 export default function PropertySearchResults() {
   const navigate = useNavigate();
@@ -98,6 +120,7 @@ export default function PropertySearchResults() {
   const [pendingUnshortlist, setPendingUnshortlist] = useState<PendingUnshortlist | null>(null);
   const [isNamingSearch, setIsNamingSearch] = useState(false);
   const [isEditingSearch, setIsEditingSearch] = useState(false);
+  const [isFilteringResults, setIsFilteringResults] = useState(false);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   // Where the map is pointing. Deliberately plain component state: this narrows what is on
@@ -107,6 +130,11 @@ export default function PropertySearchResults() {
   // saved search covers goes through Edit search, which re-runs the scrape.
   const [mapSelection, setMapSelection] = useState<string[]>([]);
   const [mapViewport, setMapViewport] = useState<MapViewport | null>(null);
+  // The rest of the results filter, on the same terms as the map and for the same
+  // reason. Districts are absent from it: they live in mapSelection above, since the two
+  // controls edit one field and a second copy of it would only be a way for them to
+  // disagree.
+  const [resultFilter, setResultFilter] = useState(DEFAULT_FILTER_FORM);
   const [mappedResults, setMappedResults] = useState(results);
   const allPropertyCount = results?.properties?.length ?? 0;
 
@@ -118,6 +146,8 @@ export default function PropertySearchResults() {
     setMappedResults(results);
     setMapSelection([]);
     setMapViewport(null);
+    setResultFilter(DEFAULT_FILTER_FORM);
+    setIsFilteringResults(false);
   }
 
   // The launcher and the assistant panel are fixed to the viewport's right edge, which
@@ -206,16 +236,49 @@ export default function PropertySearchResults() {
     [hiddenUnitIds, alwaysHiddenUnitIds]
   );
 
-  // Bookmarks sort rather than filter, and they sort after hiding and after the map, so a
-  // property that is both stays off screen. Each half keeps the order the scrape returned
-  // it in, so pinning a card moves it to the front without reshuffling anything around it.
-  const visibleProperties = useMemo(() => {
-    const shown = filterByMap(mappableProperties, mapSelection, mapViewport);
-    return [
-      ...shown.filter(property => bookmarkedPropertyIds.has(property.propertyId)),
-      ...shown.filter(property => !bookmarkedPropertyIds.has(property.propertyId)),
-    ];
-  }, [mappableProperties, bookmarkedPropertyIds, mapSelection, mapViewport]);
+  // What the filter panel is allowed to offer: read off the properties the map draws
+  // pins for, before either view filter narrows them. Reading it off the narrowed list
+  // would grey out the chip the user just pressed, since choosing a value would leave it
+  // as the only one the results still carry.
+  const facets = useMemo(() => resultFacets(mappableProperties), [mappableProperties]);
+
+  // The map first, then the rest of the filter, so the two rules about a missing field
+  // stay apart: the map keeps a property it cannot place, and the filter drops a record
+  // that cannot answer a filter the user set by hand.
+  const filtered = useMemo(
+    () =>
+      filterResults(
+        filterByMap(mappableProperties, mapSelection, mapViewport),
+        resultFilter,
+        combinedHiddenUnitIds
+      ),
+    [mappableProperties, mapSelection, mapViewport, resultFilter, combinedHiddenUnitIds]
+  );
+
+  // Bookmarks sort rather than filter, and they sort after hiding and after both view
+  // filters, so a property that is both stays off screen. Each half keeps the order the
+  // scrape returned it in, so pinning a card moves it to the front without reshuffling
+  // anything around it.
+  const visibleProperties = useMemo(
+    () => [
+      ...filtered.properties.filter(property => bookmarkedPropertyIds.has(property.propertyId)),
+      ...filtered.properties.filter(property => !bookmarkedPropertyIds.has(property.propertyId)),
+    ],
+    [filtered, bookmarkedPropertyIds]
+  );
+
+  // The panel edits one form, so the district chips are handed the map's selection and
+  // Apply splits it back out. This is also what the count on the button counts.
+  const filterForm = useMemo(
+    () => ({ ...resultFilter, districtCode: mapSelection }),
+    [resultFilter, mapSelection]
+  );
+  const activeFilterCount = countResultFilters(filterForm);
+
+  const clearResultFilter = () => {
+    setResultFilter(DEFAULT_FILTER_FORM);
+    setMapSelection([]);
+  };
 
   const mapMarkers = useMemo(
     () =>
@@ -443,6 +506,8 @@ export default function PropertySearchResults() {
       errorMessage,
       filterSummary: searchForm ? describeFilters(searchForm) : '',
       mapFilterSummary,
+      resultFilterSummary:
+        countResultFilters(resultFilter) > 0 ? describeFilters(resultFilter) : '',
       savedSearchName,
       newSince,
       properties: visibleProperties,
@@ -512,6 +577,13 @@ export default function PropertySearchResults() {
                         Save search
                       </Button>
                     ))}
+                  {allProperties.length > 0 && (
+                    <Button variant='outline' size='sm' onClick={() => setIsFilteringResults(true)}>
+                      <ListFilter size={16} />
+                      Filter listings
+                      {activeFilterCount > 0 && <Badge tone='positive'>{activeFilterCount}</Badge>}
+                    </Button>
+                  )}
                   <Button
                     variant='outline'
                     size='sm'
@@ -576,10 +648,18 @@ export default function PropertySearchResults() {
               </Card>
             ) : (
               <div className='space-y-4'>
-                <p className='type-ui-caption'>
-                  {results?.propertyCount ?? 0} properties and {results?.unitCount ?? 0} units
-                  found. {visibleProperties.length} of {allProperties.length} properties shown.
-                </p>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <p className='type-ui-caption'>
+                    {results?.propertyCount ?? 0} properties and {results?.unitCount ?? 0} units
+                    found. {visibleProperties.length} of {allProperties.length} properties shown.
+                  </p>
+                  {activeFilterCount > 0 && (
+                    <Button variant='ghost' size='sm' onClick={clearResultFilter}>
+                      <FilterX size={15} />
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
 
                 {shortlistError && <p className='text-sm text-danger'>{shortlistError}</p>}
                 {bookmarkedError && <p className='text-sm text-danger'>{bookmarkedError}</p>}
@@ -600,6 +680,20 @@ export default function PropertySearchResults() {
                       Try widening the price range, adding districts, or scanning more pages.
                     </p>
                   </Card>
+                ) : visibleProperties.length === 0 && activeFilterCount > 0 ? (
+                  <Card className='px-6 py-16 text-center'>
+                    <p className='type-ui-title text-strong'>No results match these filters</p>
+                    <p className='type-ui-sm mt-1 text-muted'>
+                      Nothing the search returned answers all of them. Clearing the filters brings
+                      every result back.
+                    </p>
+                    <div className='mt-4 flex justify-center'>
+                      <Button variant='outline' size='sm' onClick={clearResultFilter}>
+                        <FilterX size={16} />
+                        Clear filters
+                      </Button>
+                    </div>
+                  </Card>
                 ) : visibleProperties.length === 0 ? (
                   <Card className='px-6 py-16 text-center'>
                     <p className='type-ui-title text-strong'>Every result is hidden</p>
@@ -615,6 +709,7 @@ export default function PropertySearchResults() {
                       shortlistedIds={shortlistedIds}
                       onToggleShortlist={toggleShortlist}
                       hiddenUnitIds={combinedHiddenUnitIds}
+                      filteredUnitIds={filtered.filteredUnitIds}
                       onHideProperty={property => setPendingHide({ scope: 'property', property })}
                       onHideUnit={(property, row) =>
                         setPendingHide({ scope: 'unit', property, row })
@@ -688,6 +783,21 @@ export default function PropertySearchResults() {
           isSaving={isSavingSearch}
           onClose={() => setIsNamingSearch(false)}
           onSave={saveSearch}
+        />
+      )}
+
+      {/* Mounted only while it is open, like the edit modal, so each opening starts from
+          the filter that is actually applied rather than a draft left behind. */}
+      {isFilteringResults && (
+        <ResultsFilterModal
+          form={filterForm}
+          facets={facets}
+          onClose={() => setIsFilteringResults(false)}
+          onApply={next => {
+            setMapSelection(next.districtCode);
+            setResultFilter({ ...next, districtCode: [] });
+            setIsFilteringResults(false);
+          }}
         />
       )}
 

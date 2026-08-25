@@ -7,6 +7,7 @@ import { DropdownMenu } from '../../../components/inputs/DropdownMenu';
 import FilterChipGroup from './FilterChipGroup';
 import DistrictMapModal from './DistrictMapModal';
 import type { FilterFormState } from '../../../types/listings';
+import type { ResultFacets } from '../utils/resultsFilter';
 import {
   BATHROOM_OPTIONS,
   BEDROOM_OPTIONS,
@@ -31,7 +32,17 @@ import {
 export interface SearchFilterFieldsProps {
   form: FilterFormState;
   onChange: (form: FilterFormState) => void;
+  /**
+   * What the results being filtered actually contain. Set only by the results filter,
+   * which narrows a result set rather than describing a scrape: with it the groups no
+   * result payload can answer are gone, the chips that would match nothing are greyed,
+   * and the range fields suggest the span the results cover. Without it this is the
+   * search form, unchanged.
+   */
+  facets?: ResultFacets;
 }
+
+type BoundsKey = 'price' | 'size' | 'psf' | 'top';
 
 interface RangeField {
   min: keyof FilterFormState;
@@ -39,6 +50,8 @@ interface RangeField {
   label: string;
   /** False for a calendar year, which must never render as "2,003". */
   thousands: boolean;
+  /** The observed span that fills this field's placeholders on the results filter. */
+  bounds: BoundsKey;
 }
 
 type CodeListKey =
@@ -52,13 +65,13 @@ type CodeListKey =
   | 'listingFeatures';
 
 const PRIMARY_RANGE_FIELDS: RangeField[] = [
-  { min: 'minPrice', max: 'maxPrice', label: 'Price', thousands: true },
-  { min: 'minSize', max: 'maxSize', label: 'Floor area in sqft', thousands: true },
-  { min: 'minTop', max: 'maxTop', label: 'TOP year', thousands: false },
+  { min: 'minPrice', max: 'maxPrice', label: 'Price', thousands: true, bounds: 'price' },
+  { min: 'minSize', max: 'maxSize', label: 'Floor area in sqft', thousands: true, bounds: 'size' },
+  { min: 'minTop', max: 'maxTop', label: 'TOP year', thousands: false, bounds: 'top' },
 ];
 
 const MORE_RANGE_FIELDS: RangeField[] = [
-  { min: 'minPsf', max: 'maxPsf', label: 'Price per sqft', thousands: true },
+  { min: 'minPsf', max: 'maxPsf', label: 'Price per sqft', thousands: true, bounds: 'psf' },
 ];
 
 // Everything behind the "More filters" toggle, so the button can say how many of them
@@ -79,11 +92,29 @@ const MORE_FILTER_KEYS: (keyof FilterFormState)[] = [
   'keyword',
 ];
 
+// The results filter has no collapse: what is left after the unanswerable groups go is
+// about what the search panel shows before its own toggle, so hiding half of it again
+// would only add a click.
+const RESULT_RANGE_FIELDS: RangeField[] = [...PRIMARY_RANGE_FIELDS, ...MORE_RANGE_FIELDS];
+
+const FLOORPLAN_FEATURE_OPTIONS = LISTING_FEATURE_OPTIONS.filter(
+  option => option.value === 'withFloorplans'
+);
+
 function countActive(form: FilterFormState, keys: (keyof FilterFormState)[]): number {
   return keys.filter(key => {
     const value = form[key];
     return Array.isArray(value) ? value.length > 0 : String(value).trim() !== '';
   }).length;
+}
+
+/** The chips in a group with nothing behind them, or undefined when every one is live. */
+function unavailableValues<T extends string | number>(
+  options: { value: T }[],
+  available: Set<T> | undefined
+): T[] | undefined {
+  if (!available) return undefined;
+  return options.map(option => option.value).filter(value => !available.has(value));
 }
 
 /**
@@ -94,8 +125,13 @@ function countActive(form: FilterFormState, keys: (keyof FilterFormState)[]): nu
  * run but never edit. The filters most searches start from stay on screen and the long
  * tail sits behind a "More filters" toggle, because showing all of them at once buries
  * whatever button follows.
+ *
+ * With `facets` it renders the same groups a third way, as the results filter. That
+ * shares the component for the same reason the first two do: the filters offered over a
+ * result set are a subset of the filters that produced it, and a subset is far easier to
+ * keep honest here than in a second copy of the same chip wiring.
  */
-export default function SearchFilterFields({ form, onChange }: SearchFilterFieldsProps) {
+export default function SearchFilterFields({ form, onChange, facets }: SearchFilterFieldsProps) {
   const [showMore, setShowMore] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
@@ -108,8 +144,15 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
   const toggleCount = (key: 'bedrooms' | 'bathrooms', value: number) =>
     onChange({ ...form, [key]: toggleOption(form[key], value) });
 
+  // On the results filter this selects the districts the results reach, since the rest
+  // are greyed and selecting them would only narrow the list to nothing.
   const selectAllDistricts = () =>
-    onChange({ ...form, districtCode: DISTRICT_OPTIONS.map(option => option.value) });
+    onChange({
+      ...form,
+      districtCode: DISTRICT_OPTIONS.filter(
+        option => !facets || facets.districtCode.has(option.value)
+      ).map(option => option.value),
+    });
 
   const moreCount = countActive(form, MORE_FILTER_KEYS);
 
@@ -117,6 +160,15 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
   // number never reaches the request body wearing a comma.
   const rangeValue = (field: RangeField, key: keyof FilterFormState) =>
     field.thousands ? formatThousands(String(form[key])) : String(form[key]);
+
+  // Nothing is clamped to the span the results cover: it is stated as a placeholder and
+  // a value outside it simply matches nothing, which is a filter answering honestly.
+  const placeholder = (field: RangeField, edge: 'Min' | 'Max') => {
+    const bounds = facets?.[field.bounds];
+    if (!bounds) return edge;
+    const value = Math.round(edge === 'Min' ? bounds.min : bounds.max);
+    return `${edge} ${field.thousands ? formatThousands(String(value)) : value}`;
+  };
 
   const renderRanges = (fields: RangeField[]) =>
     fields.map(field => (
@@ -126,7 +178,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
           <Input
             type='text'
             inputMode='numeric'
-            placeholder='Min'
+            placeholder={placeholder(field, 'Min')}
             aria-label={`Minimum ${field.label.toLowerCase()}`}
             value={rangeValue(field, field.min)}
             onChange={event => setField(field.min, stripThousands(event.target.value))}
@@ -137,7 +189,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
           <Input
             type='text'
             inputMode='numeric'
-            placeholder='Max'
+            placeholder={placeholder(field, 'Max')}
             aria-label={`Maximum ${field.label.toLowerCase()}`}
             value={rangeValue(field, field.max)}
             onChange={event => setField(field.max, stripThousands(event.target.value))}
@@ -145,6 +197,91 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
         </div>
       </div>
     ));
+
+  if (facets) {
+    return (
+      <>
+        <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
+          {renderRanges(RESULT_RANGE_FIELDS)}
+        </div>
+
+        <div className='mt-4 space-y-4'>
+          <FilterChipGroup
+            label='Property type'
+            options={PROPERTY_TYPE_OPTIONS}
+            selected={form.propertyTypeCode}
+            onToggle={value => toggleCode('propertyTypeCode', value)}
+            unavailable={unavailableValues(PROPERTY_TYPE_OPTIONS, facets.propertyTypeCode)}
+          />
+          <FilterChipGroup
+            label='Tenure'
+            options={TENURE_OPTIONS}
+            selected={form.tenureCode}
+            onToggle={value => toggleCode('tenureCode', value)}
+            unavailable={unavailableValues(TENURE_OPTIONS, facets.tenureCode)}
+          />
+          <FilterChipGroup
+            label='Bedrooms'
+            options={BEDROOM_OPTIONS}
+            selected={form.bedrooms}
+            onToggle={value => toggleCount('bedrooms', value)}
+            unavailable={unavailableValues(BEDROOM_OPTIONS, facets.bedrooms)}
+          />
+          <FilterChipGroup
+            label='Bathrooms'
+            options={BATHROOM_OPTIONS}
+            selected={form.bathrooms}
+            onToggle={value => toggleCount('bathrooms', value)}
+            unavailable={unavailableValues(BATHROOM_OPTIONS, facets.bathrooms)}
+          />
+          {/* No "View on map" here: the map is already beside these results, and it is
+              the same selection this row edits. */}
+          <FilterChipGroup
+            label='Filter by district'
+            options={DISTRICT_OPTIONS}
+            selected={form.districtCode}
+            onToggle={value => toggleCode('districtCode', value)}
+            unavailable={unavailableValues(DISTRICT_OPTIONS, facets.districtCode)}
+            action={
+              <Button variant='ghost' size='sm' onClick={selectAllDistricts}>
+                <CheckCheck size={15} />
+                Select all
+              </Button>
+            }
+          />
+          <FilterChipGroup
+            label='Listing features'
+            options={FLOORPLAN_FEATURE_OPTIONS}
+            selected={form.listingFeatures}
+            onToggle={value => toggleCode('listingFeatures', value)}
+            unavailable={unavailableValues(FLOORPLAN_FEATURE_OPTIONS, facets.listingFeatures)}
+          />
+
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <div>
+              <p className='type-ui-eyebrow mb-2'>Listed</p>
+              <DropdownMenu
+                aria-label='Listed within'
+                value={form.lastPosted}
+                onChange={event => setField('lastPosted', event.target.value)}
+              >
+                <option value=''>Any date</option>
+                {LAST_POSTED_OPTIONS.map(option => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={!facets.lastPosted.has(option.value)}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
