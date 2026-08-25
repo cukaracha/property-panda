@@ -119,6 +119,45 @@ _GEO_CANVAS_RE = re.compile(
 )
 _TAG_RE = re.compile(r"<[^>]*>")
 
+# The two extractors below run inside the browser, on the raw response text of a page the
+# session fetched rather than navigated to. Each is the body of a function taking `text`
+# and returning the reduced markup, and each exists to keep a megabyte of ads, scripts and
+# images from crossing the WebDriver channel for the few hundred bytes that get parsed.
+#
+# They are deliberately written to emit exactly what the regexes above already match, so
+# the Python side cannot tell a reduced page from a whole one. Changing a regex up there
+# means changing its extractor down here.
+_SEARCH_EXTRACT_JS = r"""
+var open = text.indexOf('<script id="__NEXT_DATA__"');
+if (open < 0) { return ''; }
+var start = text.indexOf('>', open);
+if (start < 0) { return ''; }
+var end = text.indexOf('</script>', start);
+if (end < 0) { return ''; }
+// Re-wrapped rather than sliced whole, because the real tag carries attributes after the
+// type that _NEXT_DATA_RE tolerates but does not need.
+return '<script id="__NEXT_DATA__" type="application/json">'
+    + text.slice(start + 1, end)
+    + '</script>';
+"""
+
+_PROJECT_EXTRACT_JS = r"""
+var out = [];
+var rows = text.match(/<tr class="property-attr[\s\S]*?<\/tr>/g);
+if (rows) { out = out.concat(rows); }
+var image = text.match(/<meta property="og:image" content="[^"]*"[^>]*>/);
+if (image) { out.push(image[0]); }
+// The literal ' content="' form, matching _GEO_META_RE, so this stays on the real markup
+// rather than on the escaped copy of it further down the page.
+var geo = text.match(
+    /<meta property="place:location:(?:latitude|longitude)" content="[^"]*"[^>]*>/g
+);
+if (geo) { out = out.concat(geo); }
+var canvas = text.match(/<[a-zA-Z][^>]*id="map-canvas"[^>]*>/);
+if (canvas) { out.push(canvas[0]); }
+return out.join('\n');
+"""
+
 
 class PropertyGuruSource:
     """Reads for-sale residential listings from PropertyGuru."""
@@ -196,6 +235,10 @@ class PropertyGuruSource:
             return int(pagination.get("totalPages") or 0)
         except (TypeError, ValueError):
             return 0
+
+    def search_extract_js(self) -> str:
+        """Return the in-browser reducer for a search page: __NEXT_DATA__ and nothing else."""
+        return _SEARCH_EXTRACT_JS
 
     @staticmethod
     def _is_promoted_ad(card: dict) -> bool:
@@ -321,6 +364,10 @@ class PropertyGuruSource:
             "latitude": latitude,
             "longitude": longitude,
         }
+
+    def project_extract_js(self) -> str:
+        """Return the in-browser reducer for a project page: the attribute rows and the geo."""
+        return _PROJECT_EXTRACT_JS
 
     # ---------------------------------------------------------------- helpers
 

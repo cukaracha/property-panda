@@ -5,9 +5,11 @@ For each job it walks the source's search result pages in one browser session, e
 each distinct property from its project page (cached), groups everything into the shape
 the UI renders, and records the result and the terminal status on the job row.
 
-Both phases hand their URLs to the session in a batch so its tabs can load them at the
-same time. Enrichment is where that matters: it is one page load per distinct property
-and it dominates a cold run, while the search itself is only ever a handful of pages.
+Both phases hand their URLs to the session in one batch, so it can have several of them
+in flight at once, and each says how many that should be: search pages are heavier on the
+site than project pages are. Enrichment is where the concurrency matters most, since it
+is one request per distinct property and dominates a cold run, while the search itself is
+only ever a handful of pages.
 
 Both phases end in a filter check. The source's query is what does the real filtering, so
 this only catches what came back contradicting it -- a bound the site quietly ignored, or
@@ -56,21 +58,23 @@ def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
     """Walk the search result pages in one browser session, deduplicating as we go.
 
     Page 1 goes on its own because its payload is what says how many pages the search
-    actually has; the rest are handed over as one batch and load across the tabs. That
-    is also why `on_progress` cannot report a total until page 1 has landed.
+    actually has; the rest are handed over as one batch and fetched together. That is
+    also why `on_progress` cannot report a total until page 1 has landed.
 
     A `max_pages` of 0 means every page the search has, which is only knowable from
     page 1, so an unlimited run is bounded by what page 1 reports rather than upfront.
     """
     report = on_progress or (lambda done, total: None)
     first_url = source.build_search_url(filters, 1)
-    html = session.fetch_html(first_url, must_contain="__NEXT_DATA__")
+    html = session.fetch_html(
+        first_url, must_contain="__NEXT_DATA__", extract_js=source.search_extract_js()
+    )
     total_pages = source.total_pages(html)
 
     first = source.parse_listings(html)
     print(f"Page 1: {len(first)} listings")
     if not first and total_pages:
-        # The page rendered (fetch_html asserts the data marker) but yielded nothing.
+        # The page came back (fetch_html asserts the data marker) but yielded nothing.
         # On page 1 with pages available upstream, that means the payload shape moved
         # under us, not that the search is empty. Failing here is deliberate: the
         # alternative reports "no properties matched" for a broken parser, which looks
@@ -99,6 +103,8 @@ def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
             rest,
             must_contain="__NEXT_DATA__",
             on_progress=lambda done, total: report(1 + done, last_page),
+            concurrency=browser.SCRAPE_SEARCH_CONCURRENCY,
+            extract_js=source.search_extract_js(),
         )
         for page, _ in rest:
             page_html = fetched.get(page)
@@ -221,7 +227,11 @@ def enrich_properties(session, source, listings, on_progress=None):
         return cached
 
     fetched = session.fetch_many(
-        targets, must_contain="property-attr", on_progress=report
+        targets,
+        must_contain="property-attr",
+        on_progress=report,
+        concurrency=browser.SCRAPE_DETAIL_CONCURRENCY,
+        extract_js=source.project_extract_js(),
     )
 
     records = {}

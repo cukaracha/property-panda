@@ -22,6 +22,10 @@ class ListingSource(Protocol):
         """Return the normalised listing records embedded in a search-results page."""
         ...
 
+    def search_extract_js(self) -> str:
+        """Return JS reducing a fetched search page to what parse_listings reads."""
+        ...
+
     def total_pages(self, html: str) -> int:
         """Return how many result pages this search has, so the worker can stop early."""
         ...
@@ -32,4 +36,8 @@ class ListingSource(Protocol):
 
     def parse_project(self, html: str) -> dict:
         """Return the property-level record embedded in a project page."""
+        ...
+
+    def project_extract_js(self) -> str:
+        """Return JS reducing a fetched project page to what parse_project reads."""
         ...

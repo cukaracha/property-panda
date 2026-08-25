@@ -75,11 +75,21 @@ search result pages in a single browser session, fetches each new project page
 for the property-level facts (TOP year, total units, tenure, developer, PSF
 range), groups everything, and writes the result.
 
-That session loads pages across four tabs rather than one. Almost all of a
-scrape is spent waiting, and enrichment is one page load per property, so the
-tabs wait in parallel instead of queueing behind each other. They are there to
-overlap the waiting, not to hit the site harder: every navigation passes through
-one shared rate limit, so the tabs take turns rather than bursting.
+That session does not navigate to each page. It parks one tab on the site, and
+once that tab is cleared it fetches everything else from inside it. A fetch made
+there inherits the clearance cookie and the open connection but skips the
+rendering, which is most of what a page load was costing: a search page pulls
+over two hundred images, ads and trackers that are thrown away seconds later.
+The source reduces each response to what its own parser reads before it crosses
+back, so a project page arrives as a few kilobytes instead of a megabyte and
+change.
+
+Requests go out several at a time, and how many depends on which phase is
+running. Search pages are the heavier of the two and go six at a time, project
+pages go sixteen. Both numbers sit where the site stops answering any faster
+rather than where the machine does, so raising them buys nothing. A fetch cannot
+clear a Cloudflare challenge, so a page that comes back refused is loaded for
+real in a second tab, which is what the human verification above is about.
 
 While it runs, the page counts rather than sitting on one label: the listings
 step says which result page it is on, and the property details step says how
@@ -101,15 +111,14 @@ project is not re-attempted by every later search.
 ## Tuning
 
 Each of these is read from the environment at start-up, so
-`SCRAPE_TABS=2 ./run.sh` is enough to change one.
+`SCRAPE_SEARCH_CONCURRENCY=3 ./run.sh` is enough to change one.
 
 | Variable                    | Default  | What it does                                          |
 | --------------------------- | -------- | ----------------------------------------------------- |
-| `SCRAPE_TABS`               | `4`      | Tabs the session spreads page loads across            |
-| `SCRAPE_DELAY_SECONDS`      | `5`      | Politeness gap per tab, shared out across all of them |
+| `SCRAPE_SEARCH_CONCURRENCY` | `6`      | Search pages fetched at once                          |
+| `SCRAPE_DETAIL_CONCURRENCY` | `16`     | Project pages fetched at once                         |
 | `AUTO_SOLVE_SECONDS`        | `30`     | How long a challenge gets before it asks you for help |
 | `MANUAL_SOLVE_SECONDS`      | `300`    | How long it then waits for you                        |
-| `MARKER_GRACE_SECONDS`      | `5`      | Grace before a rendered page counts as the wrong page |
 | `PROPERTY_TTL_SECONDS`      | 30 days  | How long a project record stays cached                |
 | `PROPERTY_FAIL_TTL_SECONDS` | 1 day    | How long a project page that failed is left alone     |
 | `CHAT_MODEL`                | `sonnet` | The model alias the assistant runs on                 |
@@ -160,7 +169,7 @@ when each one was saved so that is visible rather than assumed.
 | -------------------------- | ------------------------------------------------------------ |
 | `server.py`                | The API the SPA calls, and the background job handoff        |
 | `scraper.py`               | One job end to end: scrape, enrich, group, record            |
-| `browser.py`               | The visible Chrome session and the verification wait         |
+| `browser.py`               | The visible Chrome session, its fetching and the wait        |
 | `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup     |
 | `grouping.py`              | listings to properties to unit types to units                |
 | `store.py`                 | Job rows, property cache, saved searches, shortlist, results |
