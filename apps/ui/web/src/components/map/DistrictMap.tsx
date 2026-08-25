@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import RegionQuickSelect from './RegionQuickSelect';
@@ -32,6 +32,12 @@ export interface DistrictMapProps {
   showQuickSelect?: boolean;
   /** Names by district code, for tooltips and the screen-reader summary. */
   districtNames?: Record<string, string>;
+  /**
+   * Take all the height the parent offers instead of holding the island's aspect
+   * ratio. The SVG letterboxes what it is given, so the extra height becomes
+   * breathing room around the island rather than a stretched map.
+   */
+  fill?: boolean;
   className?: string;
 }
 
@@ -121,12 +127,10 @@ interface Pin {
  * in the model handed in, so both get the region buttons, the frame, the labels, the pins,
  * the live region and the same controls.
  *
- * The frame and its control bar are one conjoined object. A single wrapper carries the
- * border, the radius and `overflow:hidden`, and neither half carries a radius of its own,
- * so the seam between them is a single hairline: the bar's top border when the pair is
- * stacked, its left border when they sit side by side. Which of those happens is a 520px
- * container query, so the same component reads correctly in a 360px rail and in a wide,
- * shallow dialog.
+ * The controls ride on glass inside the frame rather than in a bar beside it, and the
+ * panel reflows on a 520px container query: pinned to the frame's right edge when the
+ * frame is wide, dropped to its bottom edge when it is narrow. One rule serves both
+ * mounts, so the same component reads correctly in a 360px rail and in a wide dialog.
  *
  * Selection is controlled, so the search form and the results page drive it the same way.
  * The component knows nothing about properties or filter state: callers project their own
@@ -139,6 +143,7 @@ export default function DistrictMap({
   onViewportChange,
   showQuickSelect = true,
   districtNames,
+  fill = false,
   className,
 }: DistrictMapProps) {
   const [view, setView] = useState<View>(DEFAULT_VIEW);
@@ -335,6 +340,19 @@ export default function DistrictMap({
     return [...clustered, ...loose];
   }, [markers, view.k]);
 
+  /**
+   * The order the outlines are painted in: plain, then hovered, then selected.
+   *
+   * The districts tile exactly, so a stroke centred on a shared edge is half-covered by
+   * whichever neighbour paints after it. Emphasis therefore has to paint last, or a
+   * selected district loses its outline along every edge facing a later neighbour. Sort
+   * is stable, so plain districts keep their source order.
+   */
+  const outlineOrder = useMemo(() => {
+    const weight = (code: string) => (chosen.has(code) ? 2 : hovered === code ? 1 : 0);
+    return [...DISTRICT_SHAPES].sort((a, b) => weight(a.code) - weight(b.code));
+  }, [chosen, hovered]);
+
   const summary = selected.length
     ? `${selected.length} district${selected.length === 1 ? '' : 's'} selected: ${selected
         .map(code => (districtNames?.[code] ? `${code} ${districtNames[code]}` : code))
@@ -342,224 +360,240 @@ export default function DistrictMap({
     : 'No districts selected.';
 
   return (
-    <div className={cn('pp-map', className)}>
+    <div className={cn('pp-map', fill && 'pp-map--fill', className)}>
       {showQuickSelect && interactive ? (
         <RegionQuickSelect selected={selected} onChange={onSelectionChange!} />
       ) : null}
 
-      {/* One wrapper carries the border, the radius and the clip, so the frame and the
-          control bar read as a single object with a hairline seam between them. */}
+      {/* The unit carries the border, the radius and the clip, and answers the 520px
+          container query on behalf of the controls inside it: an element cannot answer
+          its own query, and the unit is the frame's width to within a hairline.
+          The ratio rides a custom property rather than an inline aspect-ratio, so the
+          fill variant's rule can turn it off -- an inline style would outrank it. */}
       <div className='pp-map__unit'>
-        {/* The container query is asked of this shell, not of the body: an element
-            cannot answer its own query, and putting it on the panel root would drop the
-            content's width contribution and collapse the column to nothing. */}
-        <div className='pp-map__shell'>
-          <div className='pp-map__body'>
-            <div
-              className='pp-map__frame'
-              style={{ aspectRatio: `${VIEW_WIDTH} / ${VIEW_HEIGHT}` }}
-            >
-              <svg
-                ref={svgRef}
-                viewBox={DISTRICT_VIEW_BOX}
-                preserveAspectRatio='xMidYMid meet'
-                className={cn(
-                  'block h-full w-full select-none',
-                  interactive && 'cursor-grab active:cursor-grabbing'
+        <div
+          className='pp-map__frame'
+          style={{ '--pp-map-ar': `${VIEW_WIDTH} / ${VIEW_HEIGHT}` } as CSSProperties}
+        >
+          <svg
+            ref={svgRef}
+            viewBox={DISTRICT_VIEW_BOX}
+            preserveAspectRatio='xMidYMid meet'
+            className={cn(
+              'block h-full w-full select-none',
+              interactive && 'cursor-grab active:cursor-grabbing'
+            )}
+            style={{ touchAction: 'none' }}
+            role='group'
+            aria-label='Singapore postal districts'
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={() => {
+              gestureRef.current = null;
+            }}
+          >
+            <g ref={layerRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+              {/* Fills first, outlines second. A path paints its own fill under its own
+                  stroke, so drawing both in one pass lets a later district's fill eat
+                  its neighbour's outline along the edge they share. These paths are the
+                  hit targets and the keyboard targets: only they carry data-code. */}
+              {DISTRICT_SHAPES.map(shape => {
+                const isSelected = chosen.has(shape.code);
+                const isHovered = hovered === shape.code;
+                const name = districtNames?.[shape.code];
+                return (
+                  <path
+                    key={shape.code}
+                    data-code={shape.code}
+                    d={shape.d}
+                    fill={
+                      isSelected
+                        ? 'var(--pp-map-sel)'
+                        : isHovered
+                          ? 'var(--pp-map-fill-hover)'
+                          : 'var(--pp-map-fill)'
+                    }
+                    role={interactive ? 'button' : undefined}
+                    tabIndex={interactive ? 0 : undefined}
+                    aria-pressed={interactive ? isSelected : undefined}
+                    aria-label={name ? `${shape.code} ${name}` : shape.code}
+                    onMouseEnter={() => setHovered(shape.code)}
+                    onMouseLeave={() =>
+                      setHovered(current => (current === shape.code ? null : current))
+                    }
+                    onKeyDown={event => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      toggleDistrict(shape.code);
+                    }}
+                  >
+                    <title>{name ? `${shape.code} ${name}` : shape.code}</title>
+                  </path>
+                );
+              })}
+
+              {/* Never colour alone: a selected district also carries a heavier stroke,
+                  so the selection survives a colour-blind reading. Non-interactive and
+                  without data-code, so districtAt still finds exactly one hit. */}
+              <g pointerEvents='none'>
+                {outlineOrder.map(shape => {
+                  const isSelected = chosen.has(shape.code);
+                  const isHovered = hovered === shape.code;
+                  return (
+                    <path
+                      key={shape.code}
+                      d={shape.d}
+                      fill='none'
+                      stroke={
+                        isSelected || isHovered ? 'var(--border-brand)' : 'var(--border-subtle)'
+                      }
+                      strokeWidth={isSelected ? 2 : 1}
+                      // Hairlines stay hairlines at 8x, instead of turning into thick bands.
+                      vectorEffect='non-scaling-stroke'
+                    />
+                  );
+                })}
+              </g>
+
+              {/* Labels and pins counter-scale, so they hold their on-screen size while
+                  the map grows underneath them. Non-interactive so they never intercept
+                  a gesture aimed at the district below. */}
+              <g pointerEvents='none'>
+                {DISTRICT_SHAPES.map(shape =>
+                  shape.labelExtent * view.k >= LABEL_MIN_EXTENT ? (
+                    <text
+                      key={shape.code}
+                      x={shape.labelAnchor[0]}
+                      y={shape.labelAnchor[1]}
+                      textAnchor='middle'
+                      dominantBaseline='middle'
+                      fontSize={13 / view.k}
+                      fill={chosen.has(shape.code) ? 'var(--text-brand)' : 'var(--text-muted)'}
+                    >
+                      {shape.code}
+                    </text>
+                  ) : null
                 )}
-                style={{ touchAction: 'none' }}
-                role='group'
-                aria-label='Singapore postal districts'
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={() => {
-                  gestureRef.current = null;
-                }}
-              >
-                <g ref={layerRef} transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-                  {DISTRICT_SHAPES.map(shape => {
-                    const isSelected = chosen.has(shape.code);
-                    const isHovered = hovered === shape.code;
-                    const name = districtNames?.[shape.code];
-                    return (
-                      <path
-                        key={shape.code}
-                        data-code={shape.code}
-                        d={shape.d}
-                        fill={
-                          isSelected
-                            ? 'var(--pp-map-sel)'
-                            : isHovered
-                              ? 'var(--pp-map-fill-hover)'
-                              : 'var(--pp-map-fill)'
-                        }
-                        // Never colour alone: a selected district also carries a heavier
-                        // stroke, so the selection survives a colour-blind reading.
-                        stroke={
-                          isSelected || isHovered ? 'var(--border-brand)' : 'var(--border-subtle)'
-                        }
-                        strokeWidth={isSelected ? 2 : 1}
-                        // Hairlines stay hairlines at 8x, instead of turning into thick bands.
-                        vectorEffect='non-scaling-stroke'
-                        role={interactive ? 'button' : undefined}
-                        tabIndex={interactive ? 0 : undefined}
-                        aria-pressed={interactive ? isSelected : undefined}
-                        aria-label={name ? `${shape.code} ${name}` : shape.code}
-                        onMouseEnter={() => setHovered(shape.code)}
-                        onMouseLeave={() =>
-                          setHovered(current => (current === shape.code ? null : current))
-                        }
-                        onKeyDown={event => {
-                          if (event.key !== 'Enter' && event.key !== ' ') return;
-                          event.preventDefault();
-                          toggleDistrict(shape.code);
-                        }}
+
+                {pins.map(pin => (
+                  <g key={pin.key} opacity={pin.dimmed ? 0.45 : 1}>
+                    <circle
+                      cx={pin.x}
+                      cy={pin.y}
+                      r={(pin.count > 1 ? 9 : 4.5) / view.k}
+                      fill='var(--surface-brand)'
+                      stroke='var(--surface-card)'
+                      strokeWidth={1.5}
+                      vectorEffect='non-scaling-stroke'
+                    />
+                    {pin.count > 1 && (
+                      <text
+                        x={pin.x}
+                        y={pin.y}
+                        textAnchor='middle'
+                        dominantBaseline='central'
+                        fontSize={9 / view.k}
+                        fontWeight={700}
+                        fill='var(--action-primary-text)'
                       >
-                        <title>{name ? `${shape.code} ${name}` : shape.code}</title>
-                      </path>
-                    );
-                  })}
-
-                  {/* Labels and pins counter-scale, so they hold their on-screen size while
-                      the map grows underneath them. Non-interactive so they never intercept
-                      a gesture aimed at the district below. */}
-                  <g pointerEvents='none'>
-                    {DISTRICT_SHAPES.map(shape =>
-                      shape.labelExtent * view.k >= LABEL_MIN_EXTENT ? (
-                        <text
-                          key={shape.code}
-                          x={shape.labelAnchor[0]}
-                          y={shape.labelAnchor[1]}
-                          textAnchor='middle'
-                          dominantBaseline='middle'
-                          fontSize={13 / view.k}
-                          fill={chosen.has(shape.code) ? 'var(--text-brand)' : 'var(--text-muted)'}
-                        >
-                          {shape.code}
-                        </text>
-                      ) : null
+                        {pin.count}
+                      </text>
                     )}
-
-                    {pins.map(pin => (
-                      <g key={pin.key} opacity={pin.dimmed ? 0.45 : 1}>
-                        <circle
-                          cx={pin.x}
-                          cy={pin.y}
-                          r={(pin.count > 1 ? 9 : 4.5) / view.k}
-                          fill='var(--surface-brand)'
-                          stroke='var(--surface-card)'
-                          strokeWidth={1.5}
-                          vectorEffect='non-scaling-stroke'
-                        />
-                        {pin.count > 1 && (
-                          <text
-                            x={pin.x}
-                            y={pin.y}
-                            textAnchor='middle'
-                            dominantBaseline='central'
-                            fontSize={9 / view.k}
-                            fontWeight={700}
-                            fill='var(--action-primary-text)'
-                          >
-                            {pin.count}
-                          </text>
-                        )}
-                      </g>
-                    ))}
                   </g>
-                </g>
-              </svg>
-            </div>
+                ))}
+              </g>
+            </g>
+          </svg>
 
-            {/* The controls are structurally beside the map, never over it: at rail size
-                a floating cluster covers a fifth of the island and eclipses whole
-                districts, and no amount of pointer-events tuning fixes a control that is
-                physically on top of its target. */}
-            <div className='pp-map__bar'>
-              <div className='pp-map__zoom'>
-                <button
-                  type='button'
-                  className='pp-map__btn'
-                  aria-label='Zoom out'
-                  title='Zoom out'
-                  disabled={view.k <= MIN_SCALE}
-                  onClick={() => zoomTo(view.k / ZOOM_STEP)}
-                >
-                  <Minus size={15} />
-                </button>
-                <input
-                  type='range'
-                  className='pp-map__slider'
-                  min={MIN_SCALE}
-                  max={MAX_SCALE}
-                  step={0.1}
-                  value={view.k}
-                  aria-label='Zoom'
-                  onChange={event => zoomTo(Number(event.target.value))}
-                />
-                <button
-                  type='button'
-                  className='pp-map__btn'
-                  aria-label='Zoom in'
-                  title='Zoom in'
-                  disabled={view.k >= MAX_SCALE}
-                  onClick={() => zoomTo(view.k * ZOOM_STEP)}
-                >
-                  <Plus size={15} />
-                </button>
-              </div>
-
+          {/* Glass over the map rather than a bar beside it, and a sibling of the svg
+              rather than a child of it: a gesture that starts on the panel never reaches
+              the pan handler, so no pointer-events tuning is needed to keep the two
+              apart. The frame keeps a padding band at every size, so at the default fit
+              the panel sits over empty water rather than over a district. */}
+          <div className='pp-map__controls'>
+            <div className='pp-map__pad'>
+              <button
+                type='button'
+                className='pp-map__btn pp-map__pad-up'
+                aria-label='Pan up'
+                title='Pan up'
+                onClick={() => panBy(0, -1)}
+              >
+                <ArrowUp size={15} />
+              </button>
+              <button
+                type='button'
+                className='pp-map__btn pp-map__pad-left'
+                aria-label='Pan left'
+                title='Pan left'
+                onClick={() => panBy(-1, 0)}
+              >
+                <ArrowLeft size={15} />
+              </button>
               {/* Reset sits at the centre of the pan pad rather than in a footer of its
                   own: it is the same action, and two of them is one too many. */}
-              <div className='pp-map__pad'>
-                <button
-                  type='button'
-                  className='pp-map__btn pp-map__pad-up'
-                  aria-label='Pan up'
-                  title='Pan up'
-                  onClick={() => panBy(0, -1)}
-                >
-                  <ArrowUp size={15} />
-                </button>
-                <button
-                  type='button'
-                  className='pp-map__btn pp-map__pad-left'
-                  aria-label='Pan left'
-                  title='Pan left'
-                  onClick={() => panBy(-1, 0)}
-                >
-                  <ArrowLeft size={15} />
-                </button>
-                <button
-                  type='button'
-                  className='pp-map__btn pp-map__pad-reset'
-                  aria-label='Reset map'
-                  title='Reset map'
-                  disabled={isAtRest}
-                  onClick={handleReset}
-                >
-                  <RotateCcw size={15} />
-                </button>
-                <button
-                  type='button'
-                  className='pp-map__btn pp-map__pad-right'
-                  aria-label='Pan right'
-                  title='Pan right'
-                  onClick={() => panBy(1, 0)}
-                >
-                  <ArrowRight size={15} />
-                </button>
-                <button
-                  type='button'
-                  className='pp-map__btn pp-map__pad-down'
-                  aria-label='Pan down'
-                  title='Pan down'
-                  onClick={() => panBy(0, 1)}
-                >
-                  <ArrowDown size={15} />
-                </button>
-              </div>
+              <button
+                type='button'
+                className='pp-map__btn pp-map__pad-reset'
+                aria-label='Reset map'
+                title='Reset map'
+                disabled={isAtRest}
+                onClick={handleReset}
+              >
+                <RotateCcw size={15} />
+              </button>
+              <button
+                type='button'
+                className='pp-map__btn pp-map__pad-right'
+                aria-label='Pan right'
+                title='Pan right'
+                onClick={() => panBy(1, 0)}
+              >
+                <ArrowRight size={15} />
+              </button>
+              <button
+                type='button'
+                className='pp-map__btn pp-map__pad-down'
+                aria-label='Pan down'
+                title='Pan down'
+                onClick={() => panBy(0, 1)}
+              >
+                <ArrowDown size={15} />
+              </button>
+            </div>
+
+            <div className='pp-map__zoom'>
+              <button
+                type='button'
+                className='pp-map__btn'
+                aria-label='Zoom out'
+                title='Zoom out'
+                disabled={view.k <= MIN_SCALE}
+                onClick={() => zoomTo(view.k / ZOOM_STEP)}
+              >
+                <Minus size={15} />
+              </button>
+              <input
+                type='range'
+                className='pp-map__slider'
+                min={MIN_SCALE}
+                max={MAX_SCALE}
+                step={0.1}
+                value={view.k}
+                aria-label='Zoom'
+                onChange={event => zoomTo(Number(event.target.value))}
+              />
+              <button
+                type='button'
+                className='pp-map__btn'
+                aria-label='Zoom in'
+                title='Zoom in'
+                disabled={view.k >= MAX_SCALE}
+                onClick={() => zoomTo(view.k * ZOOM_STEP)}
+              >
+                <Plus size={15} />
+              </button>
             </div>
           </div>
         </div>

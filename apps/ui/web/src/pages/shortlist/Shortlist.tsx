@@ -50,8 +50,7 @@ export default function Shortlist() {
       <div className='page-scroll'>
         <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
           <div>
-            <p className='type-ui-eyebrow font-mono'>Kept for good</p>
-            <h1 className='type-ui-h1 mt-1 text-strong'>Shortlist</h1>
+            <h1 className='type-ui-h1 text-strong'>Shortlist</h1>
             <p className='type-ui-caption mt-1'>
               {unitCount} {unitCount === 1 ? 'unit' : 'units'} across {propertyCount}{' '}
               {propertyCount === 1 ? 'property' : 'properties'}.

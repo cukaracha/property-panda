@@ -38,12 +38,16 @@ export default function DistrictMapModal({
       // The 468px default is far too narrow for a map; this is the width EditSearchModal
       // already uses for the same reason.
       maxWidth='max-w-[940px]'
+      // The map is the whole point of this dialog, so it takes the height rather than
+      // sitting at the island's own ratio with the dialog shrink-wrapped around it.
+      fillHeight
       footer={<Button onClick={onClose}>Done</Button>}
     >
       <DistrictMap
         selected={selected}
         onSelectionChange={onChange}
         districtNames={DISTRICT_NAME_BY_CODE}
+        fill
       />
     </Modal>
   );

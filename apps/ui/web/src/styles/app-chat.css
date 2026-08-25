@@ -52,6 +52,13 @@
     right: calc(360px + 24px);
     transition: right var(--duration-base) var(--ease-standard);
   }
+  /* Closed, the rail is still a 52px strip in the flow, so the offset shrinks
+     rather than disappearing. */
+  body.map-rail-collapsed .cb-pill,
+  body.map-rail-collapsed .cb-panel {
+    right: calc(52px + 24px);
+    transition: right var(--duration-base) var(--ease-standard);
+  }
   @media (min-width: 1200px) {
     body.map-rail-open .cb-pill,
     body.map-rail-open .cb-panel {
@@ -60,7 +67,9 @@
   }
   @media (max-width: 767px) {
     body.map-rail-open .cb-pill,
-    body.map-rail-open .cb-panel {
+    body.map-rail-open .cb-panel,
+    body.map-rail-collapsed .cb-pill,
+    body.map-rail-collapsed .cb-panel {
       right: 24px;
     }
   }

@@ -100,7 +100,7 @@ export default function Profile() {
 
   return (
     <div className='page-scroll'>
-      <div className='mx-auto max-w-[720px] px-6 pb-24 pt-10'>
+      <div className='mx-auto max-w-[1080px] px-6 pb-24 pt-10'>
         <ProfileHeader />
 
         {toasts.map((toast, index) => (

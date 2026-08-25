@@ -14,6 +14,12 @@ export interface ModalProps {
   footer?: ReactNode;
   maxWidth?: string;
   /**
+   * Gives the card all the height it is allowed instead of letting it shrink-wrap its
+   * content, and stops the body scrolling so the content can size itself against the
+   * space. Use where the content wants the room, e.g. a map. Defaults to false.
+   */
+  fillHeight?: boolean;
+  /**
    * When false, the modal cannot be dismissed: Escape and backdrop clicks are
    * ignored and the close (×) button is hidden. Use during an in-flight request
    * the user must not interrupt. Defaults to true.
@@ -47,6 +53,7 @@ export default function Modal({
   children,
   footer,
   maxWidth = 'max-w-[468px]',
+  fillHeight = false,
   dismissible = true,
 }: ModalProps) {
   const modalId = useId();
@@ -103,7 +110,7 @@ export default function Modal({
         aria-modal='true'
         aria-label={title}
         tabIndex={-1}
-        className={cn('modal-card relative', maxWidth)}
+        className={cn('modal-card relative', fillHeight && 'modal-card--fill', maxWidth)}
         onClick={e => e.stopPropagation()}
       >
         <div className='modal-head relative px-[22px] pb-4 pt-[22px]'>

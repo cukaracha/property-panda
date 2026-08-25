@@ -43,6 +43,16 @@
     line-height: var(--leading-snug);
     letter-spacing: var(--tracking-tight);
   }
+  /* A name that heads its own row -- a saved search, say. Display type, so it reads
+     as one family with the heading above it rather than as another line of body. */
+  .type-ui-name {
+    font-family: var(--font-display);
+    font-size: var(--t-ui-lg);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-strong);
+  }
   .type-ui-sm {
     font-family: var(--font-sans);
     font-size: var(--t-ui-sm);
@@ -134,7 +144,11 @@
     gap: 11px;
     min-width: 0;
   }
+  /* The word is always rendered -- it is the home link's accessible name -- but the
+     92px rail has no room for it beside a 44px mark, so only the expanded drawer
+     below 768px shows it. */
   .brand-logo__word {
+    display: none;
     font-family: var(--font-display);
     font-size: 19px;
     font-weight: var(--weight-bold);
@@ -532,6 +546,17 @@
   .modal-foot {
     flex: none;
   }
+  /* A card that takes the height it is allowed rather than shrink-wrapping, for
+     content that should grow into it. Its body stops scrolling and becomes a column,
+     so the content sizes itself against the space instead of overflowing. */
+  .modal-card--fill {
+    height: calc(100dvh - 48px);
+  }
+  .modal-card--fill .modal-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
   @media (prefers-reduced-motion: no-preference) {
     .modal-scrim {
       animation: modal-fade var(--duration-base) var(--ease-standard);
@@ -647,6 +672,10 @@
     .sidebar-head {
       justify-content: flex-start;
       padding: 4px 6px 14px;
+    }
+
+    .brand-logo__word {
+      display: block;
     }
 
     .nav-item {
@@ -869,17 +898,51 @@
     border-left: 1px solid var(--border-subtle);
     background: var(--surface-card);
     overflow-y: auto;
+    transition: width var(--duration-base) var(--ease-standard);
+  }
+  /* Closed, the rail stays in the flow as a strip rather than leaving it: the control
+     that reopens it lives inside the rail, so there has to be a rail left to hold it. */
+  .results-rail--collapsed {
+    width: 52px;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+  }
+  .results-rail__expand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 100%;
+    padding: 20px 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--t-ui-xs);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    transition: var(--transition-control);
+  }
+  .results-rail__expand:hover {
+    background: var(--action-ghost-bg-hover);
+    color: var(--text-strong);
+  }
+  .results-rail__expand span {
+    writing-mode: vertical-rl;
+    letter-spacing: var(--tracking-wide);
   }
   @media (min-width: 1200px) {
     .results-rail {
       width: 440px;
     }
+    .results-rail--collapsed {
+      width: 52px;
+    }
   }
 
   .results-rail-backdrop {
-    display: none;
-  }
-  .results-rail__close {
     display: none;
   }
 
@@ -898,8 +961,10 @@
     .results-rail.is-open {
       transform: translateX(0);
     }
-    .results-rail__close {
-      display: inline-flex;
+    /* No strip here: off canvas there is no width to share, so the toolbar's own
+       toggle is what brings the drawer back. */
+    .results-rail--collapsed {
+      display: none;
     }
     .results-rail-backdrop {
       display: block;
@@ -918,47 +983,74 @@
   }
 
   /* ==========================================================
-     DISTRICT MAP — the frame and its controls as one conjoined
-     object. The unit carries the border, the radius and the clip;
-     neither half carries a radius, so the seam between them is a
-     single hairline. Whether the controls sit under the map or beside
-     it is a 520px container query, asked of a shell wrapping the flex
-     body: an element cannot answer its own query, and asking it of the
-     panel root would drop the content's width contribution.
+     DISTRICT MAP — one framed object with its controls on glass
+     inside it. The unit carries the border, the radius and the clip,
+     and is the query container: an element cannot answer its own
+     query, and the unit is the frame's width to within a hairline.
+     Above 520px the panel pins to the frame's right edge as a column;
+     below it, to the frame's bottom edge as a row. The frame keeps a
+     padding band at every size, so the map never touches its border
+     and the panel has empty ground to sit on at the default fit.
      ========================================================== */
   .pp-map {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
+  /* Fill mode: the frame takes every spare pixel and the SVG's own
+     xMidYMid meet letterboxes the island into it. Only the unit grows. */
+  .pp-map--fill {
+    flex: 1;
+    min-height: 0;
+  }
+  .pp-map--fill > :not(.pp-map__unit) {
+    flex: none;
+  }
+  .pp-map--fill .pp-map__unit {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .pp-map--fill .pp-map__frame {
+    flex: 1;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
   .pp-map__unit {
+    container-type: inline-size;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     overflow: hidden;
     background: var(--surface-sunken);
   }
-  .pp-map__shell {
-    container-type: inline-size;
-  }
-  .pp-map__body {
-    display: flex;
-    flex-direction: column;
-  }
-  /* The frame's layout lives here, never inline: an inline style would outrank the
-     container query. Only the aspect ratio itself is set from the SVG's own viewBox. */
+  /* The frame's layout lives here, never inline: an inline style would outrank both
+     the container query and the fill rule. Only the ratio comes from the SVG's own
+     viewBox, and it arrives as a custom property for the same reason. */
   .pp-map__frame {
+    position: relative;
     width: 100%;
-    max-width: 390px;
-    margin: 0 auto;
+    aspect-ratio: var(--pp-map-ar);
+    padding: 10px;
     background: var(--surface-sunken);
   }
-  .pp-map__bar {
+  .pp-map__controls {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
     display: flex;
+    /* Reversed, so the pan pad reads first in the DOM (it leads the column at wide
+       sizes) while still sitting to the right of the slider in the strip. */
+    flex-direction: row-reverse;
     align-items: center;
-    gap: 10px;
-    padding: 7px 9px;
-    background: var(--surface-card);
-    border-top: 1px solid var(--border-subtle);
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-glass);
+    backdrop-filter: blur(6px);
+    box-shadow: var(--shadow-sm);
   }
   .pp-map__zoom {
     display: flex;
@@ -1021,23 +1113,18 @@
   }
 
   @container (min-width: 520px) {
-    .pp-map__body {
-      flex-direction: row;
-      align-items: stretch;
-      justify-content: center;
-    }
-    .pp-map__frame {
-      flex: 1 1 auto;
-      min-width: 0;
-      margin: 0;
-    }
-    .pp-map__bar {
-      flex: none;
+    /* 134px is the width the bar held before it became glass, which is what gives the
+       slider a usable run under the 78px pan pad. */
+    .pp-map__controls {
+      left: auto;
+      right: 10px;
+      bottom: auto;
+      top: 50%;
+      transform: translateY(-50%);
       width: 134px;
       flex-direction: column;
-      justify-content: center;
-      border-top: 0;
-      border-left: 1px solid var(--border-subtle);
+      gap: 10px;
+      padding: 8px;
     }
     .pp-map__zoom {
       flex: none;

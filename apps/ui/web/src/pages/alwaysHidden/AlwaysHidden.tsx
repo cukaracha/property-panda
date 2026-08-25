@@ -40,10 +40,9 @@ export default function AlwaysHidden() {
 
   return (
     <div className='page-scroll'>
-      <div className='mx-auto max-w-[860px] space-y-6 px-6 pb-24 pt-10'>
+      <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
         <div>
-          <p className='type-ui-eyebrow font-mono'>A standing decision</p>
-          <h1 className='type-ui-h1 mt-1 text-strong'>Always hidden</h1>
+          <h1 className='type-ui-h1 text-strong'>Always hidden</h1>
           <p className='type-ui-caption mt-1'>
             {alwaysHidden.length} {alwaysHidden.length === 1 ? 'item' : 'items'} left out of every
             search.

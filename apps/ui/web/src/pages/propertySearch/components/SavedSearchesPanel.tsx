@@ -92,7 +92,7 @@ export default function SavedSearchesPanel({
                   onKeyDown={event => handleKeyDown(event, search)}
                 >
                   <div className='min-w-0'>
-                    <p className='truncate text-sm text-body'>{search.name}</p>
+                    <p className='type-ui-name truncate'>{search.name}</p>
                     <p className='type-ui-sm truncate text-muted'>
                       {describeFilters(toFilterForm(search))}
                       {listSummary && ` (${listSummary})`}

@@ -102,18 +102,29 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
             <li
               key={step}
               className={cn(
-                'flex items-center gap-2.5 rounded-control px-3 py-2.5 transition-all',
-                isCurrent && 'bg-card shadow-sm',
+                'flex items-center gap-2.5 rounded-control px-3 py-2.5 transition-[background-color,opacity] duration-[var(--duration-base)]',
+                isCurrent && 'bg-brand-subtle',
                 !isDone && !isCurrent && 'opacity-55'
               )}
             >
-              {isDone ? (
-                <Check size={16} className='shrink-0 text-brand' />
-              ) : isCurrent ? (
-                <Spinner size='sm' />
-              ) : (
-                <Circle size={16} className='shrink-0 text-subtle' />
-              )}
+              <span
+                className={cn(
+                  'flex h-[26px] w-[26px] flex-none items-center justify-center rounded-pill transition-[background-color,color] duration-[var(--duration-base)]',
+                  isDone
+                    ? 'bg-brand-solid text-on-brand'
+                    : isCurrent
+                      ? 'bg-card text-brand'
+                      : 'bg-sunken text-subtle'
+                )}
+              >
+                {isDone ? (
+                  <Check size={16} />
+                ) : isCurrent ? (
+                  <Spinner size='sm' />
+                ) : (
+                  <Circle size={16} />
+                )}
+              </span>
               <span
                 className={cn(
                   'text-sm',

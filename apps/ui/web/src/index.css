@@ -14,9 +14,12 @@
    regions, so a route can hold a fixed rail beside a scrolling column.
    ============================================================ */
 
+/* Body type size goes on `body`, never on `:root`. Tailwind's spacing scale is
+   `--spacing: .25rem`, so a 15px root would make every gap, gutter and padding
+   in the app render at 93.75% of the 4px grid the design is drawn on. `html`
+   stays at the browser default and 1rem stays 16px. */
 :root {
   font-family: var(--type-body-font);
-  font-size: var(--type-body-size);
   line-height: var(--type-body-leading);
   font-weight: var(--type-body-weight);
   color: var(--text-body);
@@ -41,6 +44,7 @@ body {
   margin: 0;
   height: 100dvh;
   overflow: hidden;
+  font-size: var(--type-body-size);
   background: var(--surface-page);
   color: var(--text-body);
 }

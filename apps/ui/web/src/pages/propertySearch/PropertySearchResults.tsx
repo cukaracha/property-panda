@@ -124,9 +124,15 @@ export default function PropertySearchResults() {
   // is exactly where the rail is, so they are told to step aside for as long as it is
   // open. A class rather than store state: the rail belongs to this route alone.
   useEffect(() => {
-    const isRailOpen = showMap && allPropertyCount > 0;
-    document.body.classList.toggle('map-rail-open', isRailOpen);
-    return () => document.body.classList.remove('map-rail-open');
+    const hasRail = allPropertyCount > 0;
+    document.body.classList.toggle('map-rail-open', hasRail && showMap);
+    // Closed, the rail is still 52px of column above 768px, so the launcher steps
+    // aside by that much rather than returning to the viewport edge.
+    document.body.classList.toggle('map-rail-collapsed', hasRail && !showMap);
+    return () => {
+      document.body.classList.remove('map-rail-open');
+      document.body.classList.remove('map-rail-collapsed');
+    };
   }, [showMap, allPropertyCount]);
 
   const addToast = useCallback((type: ToastItem['type'], message: string) => {
@@ -516,13 +522,14 @@ export default function PropertySearchResults() {
                       ? 'Hide the hidden items'
                       : `Show hidden (${hiddenInResults.length + alwaysHiddenInResults.length})`}
                   </Button>
-                  {/* The rail's own header cannot bring it back once it is out of the flow,
-                  and below 768px it is off canvas entirely, so the one control that
-                  works at every width lives here beside the other view toggles. */}
+                  {/* Below 768px the rail is off canvas with no strip left behind, so
+                  this is the only thing that can bring it back. Above that the rail
+                  carries its own control and this one would be a second copy. */}
                   {allProperties.length > 0 && (
                     <Button
                       variant='outline'
                       size='sm'
+                      className='md:hidden'
                       aria-expanded={showMap}
                       onClick={() => setShowMap(current => !current)}
                     >
@@ -634,6 +641,7 @@ export default function PropertySearchResults() {
             />
             <ResultsMapPanel
               isOpen={showMap}
+              onOpen={() => setShowMap(true)}
               onClose={() => setShowMap(false)}
               selected={mapSelection}
               onSelectionChange={setMapSelection}

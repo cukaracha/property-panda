@@ -88,7 +88,9 @@ export default function PropertyCard({
             <Building2 size={24} className='text-subtle' />
           </div>
         )}
-        <div className='min-w-0 flex-1'>
+        {/* A real flex basis, not flex-1: at flex:1 1 0% the column shrinks to nothing
+            against the actions beside it and the name breaks one glyph per line. */}
+        <div className='min-w-0 flex-[1_1_240px]'>
           <div className='flex flex-nowrap items-center gap-2'>
             <h2 className='type-ui-title min-w-0 break-words text-strong'>{property.name}</h2>
             {property.info.propertyType && (
@@ -101,7 +103,7 @@ export default function PropertyCard({
           </p>
           {caption && <p className='type-ui-caption mt-1'>{caption}</p>}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='ml-auto flex flex-none flex-wrap items-center justify-end gap-2'>
           {property.info.projectUrl && (
             <a
               href={property.info.projectUrl}
