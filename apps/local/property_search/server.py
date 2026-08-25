@@ -10,6 +10,8 @@ no rework beyond pointing at this host instead of API Gateway:
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
     GET    /listings/photos/{id}      -> one listing's photos, asked for when a carousel
                                          opens rather than carried with the results
+    GET    /listings/property-photos/{id} -> one project's own gallery, the same way and
+                                         for the same reason
     GET    /listings/saved-searches   -> the searches kept for re-running
     POST   /listings/saved-searches   -> save one, with the items it hides and pins
     PUT    /listings/saved-searches/{id} -> replace its name, request, hidden and pinned
@@ -196,6 +198,25 @@ def get_listing_photos(listing_id: str):
     return {"photos": photos}
 
 
+@app.get("/listings/property-photos/{property_id}")
+def get_property_photos(property_id: str):
+    """One project's own gallery photos, fetched when the card's carousel opens.
+
+    The property equivalent of the route above and kept apart from it deliberately: these
+    are photos of the development, not of a unit someone is selling. They are left out of
+    the result payload for the same reason, the property card carrying the count alone.
+    """
+    try:
+        property_id = validation.clean_entity_id(property_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    photos = store.get_property_photos(property_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="Those photos are no longer available")
+    return {"photos": photos}
+
+
 @app.get("/listings/saved-searches")
 def list_saved_searches():
     """Every search kept for re-running, newest first."""
@@ -334,6 +355,11 @@ async def create_shortlist(request: Request):
         # rather than by sending the whole list up from the browser and straight back.
         if not entry["photos"]:
             entry["photos"] = store.get_listing_photos(entry["listingId"])
+        # The project's gallery is completed the same way and for the same reason, so a
+        # shortlisted property keeps its carousel after the cache row behind it expires.
+        if not entry["info"]["photos"]:
+            entry["info"]["photos"] = store.get_property_photos(entry["propertyId"])
+            entry["info"]["photoCount"] = len(entry["info"]["photos"])
         return store.put_shortlist(entry)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

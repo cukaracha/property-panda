@@ -48,6 +48,22 @@ Project page (https://www.propertyguru.com.sg/project/{slug}-{projectId})
     `td.value-block`. Observed labels: Project Name, project type, Developer, Tenure,
     PSF, Completion Year, # of Floors, Total Units. The hero image is `og:image`.
 
+    The project's own photo gallery is server-rendered into the same markup:
+      <div class="carousel-major"> ... <span class="gallery-item image"><img ...>
+    Nine items on the probed project, and the page's own counter
+    (`<a class="carousel-link-img">9 ...<em class="sr-only">Photos</em></a>`) matched all
+    nine -- the same cross-check the listing photos get against `mediaItems`. The first
+    three carry the URL in `src`; the rest carry a placeholder there and the real URL in
+    `data-original` (repeated once more in `content`), so nothing is lazily fetched over
+    the network and the whole set is readable from the one page load enrichment already
+    makes. `og:image` is gallery photo #1, which is what lets the card's thumbnail open
+    the carousel on the very image that was clicked. `alt` is the project name and an
+    index on every image, so it cannot caption anything, exactly as on the listing side.
+
+    These are the *project's* photos. They are a different set from the listing photos
+    above -- one is the development, the other is the unit someone is selling -- and are
+    stored and served apart from them rather than merged.
+
     This page is also the only place the project's coordinates appear, and it carries
     them three times over:
       <meta property="place:location:latitude|longitude" content="...">
@@ -124,6 +140,8 @@ _ATTR_ROW_RE = re.compile(
     re.S,
 )
 _OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
+_GALLERY_ITEM_RE = re.compile(r'<span class="gallery-item image"[^>]*>\s*<img\b([^>]*)>')
+_IMG_ATTR_RE = re.compile(r'\b(src|data-original)="([^"]*)"')
 _GEO_META_RE = re.compile(
     r'<meta property="place:location:(latitude|longitude)" content="([^"]+)"'
 )
@@ -160,6 +178,10 @@ var rows = text.match(/<tr class="property-attr[\s\S]*?<\/tr>/g);
 if (rows) { out = out.concat(rows); }
 var image = text.match(/<meta property="og:image" content="[^"]*"[^>]*>/);
 if (image) { out.push(image[0]); }
+// The gallery, matching _GALLERY_ITEM_RE. Bounded by \s* rather than [\s\S]*? so a span
+// that carries no image cannot swallow the markup up to the next one's.
+var gallery = text.match(/<span class="gallery-item image"[^>]*>\s*<img\b[^>]*>/g);
+if (gallery) { out = out.concat(gallery); }
 // The literal ' content="' form, matching _GEO_META_RE, so this stays on the real markup
 // rather than on the escaped copy of it further down the page.
 var geo = text.match(
@@ -372,6 +394,11 @@ class PropertyGuruSource:
             "propertyType": attrs.get("project type") or "",
             "psfRange": attrs.get("psf") or "",
             "imageUrl": image_match.group(1) if image_match else "",
+            # Always present, an empty list included, for the reason the coordinates
+            # below are: store._is_current reads the key's absence as "written before
+            # the parser read the gallery" and refetches. A project that genuinely has
+            # no gallery must still say so, or it is refetched on every search forever.
+            "photos": self._gallery(html),
             # Always both keys, None included: store.get_property_cache reads their
             # absence as "written before coordinates were captured" and refetches. A page
             # that genuinely has no point must therefore still say so, or it would be
@@ -381,7 +408,7 @@ class PropertyGuruSource:
         }
 
     def project_extract_js(self) -> str:
-        """Return the in-browser reducer for a project page: the attribute rows and the geo."""
+        """Return the in-browser reducer for a project page: the rows, gallery and geo."""
         return _PROJECT_EXTRACT_JS
 
     # ---------------------------------------------------------------- helpers
@@ -401,6 +428,26 @@ class PropertyGuruSource:
     def _text(raw: str) -> str:
         """Strip tags and unescape entities from one microdata cell."""
         return html_lib.unescape(_TAG_RE.sub("", raw or "")).strip()
+
+    @staticmethod
+    def _gallery(html: str) -> list:
+        """Return the project gallery's photos, in the order the carousel lists them.
+
+        Only the first few items carry the real URL in `src`; the rest carry a shared
+        placeholder there and the real one in `data-original`, so reading `src` alone
+        would report every project as having three photos of nine.
+        """
+        photos = []
+        for attrs in _GALLERY_ITEM_RE.findall(html or ""):
+            found = dict(_IMG_ATTR_RE.findall(attrs))
+            url = found.get("data-original") or found.get("src") or ""
+            # The placeholder is one shared asset, so a span still waiting on its lazy
+            # source would otherwise land in the carousel as a blank grey frame.
+            if not url or "placeholder" in url:
+                continue
+            if url not in photos:
+                photos.append(url)
+        return photos
 
     @classmethod
     def _geo(cls, html: str) -> tuple:

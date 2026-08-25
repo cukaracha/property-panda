@@ -185,8 +185,9 @@ def get_property_cache(property_ids: list) -> tuple:
     forever, spending the whole retry budget each time on an answer that has not changed.
 
     A record written before the parser learned a field is stale even inside its TTL, or
-    the field would not appear for up to 30 days. `latitude` is the current such field;
-    see _is_current below for why its absence, and not its value, is what counts.
+    the field would not appear for up to 30 days. `latitude` and `photos` are the current
+    such fields; see _is_current below for why their absence, and not their value, is
+    what counts.
     """
     now = int(time.time())
     with _lock:
@@ -213,13 +214,17 @@ def get_property_cache(property_ids: list) -> tuple:
 def _is_current(record: dict) -> bool:
     """False for a record the current parser would fill in more of, so it is re-fetched.
 
-    Keyed on the field being *absent*, never on it being None. The parser writes
-    `latitude: None` for a project page that genuinely has no coordinates, so treating a
-    null as stale would re-fetch that project on every search forever -- the same runaway
-    the `failedAt` tombstone above exists to stop. Absence means "written before the
-    parser read coordinates at all", which is true once and then never again.
+    Keyed on the field being *absent*, never on it being empty. The parser writes
+    `latitude: None` for a project page that genuinely has no coordinates and `photos: []`
+    for one with no gallery, so treating either as stale would re-fetch that project on
+    every search forever -- the same runaway the `failedAt` tombstone above exists to
+    stop. Absence means "written before the parser read that field at all", which is true
+    once and then never again.
+
+    Adding a field here costs one re-enrichment of every cached project, spread across the
+    searches that turn them up rather than paid in a burst.
     """
-    return "latitude" in record
+    return "latitude" in record and "photos" in record
 
 
 def put_property_cache(records: dict, failed=()):
@@ -239,6 +244,25 @@ def put_property_cache(records: dict, failed=()):
         for property_id in failed:
             cache[str(property_id)] = {"failedAt": now}
         _write(PROPERTIES_FILE, cache)
+
+
+def get_property_photos(property_id: str) -> list:
+    """Return one project's gallery photos, or [] when uncached or aged out.
+
+    They live in the property cache rather than a file of their own, because that is
+    already keyed by property id and already holds the project facts they were parsed
+    beside -- and holds them for thirty days, since a project's own photos change on the
+    same slow clock the rest of its page does. The listing photos next door are the
+    opposite case and are kept apart accordingly.
+    """
+    with _lock:
+        entry = _read(PROPERTIES_FILE).get(str(property_id)) or {}
+    record = entry.get("record")
+    if not record:
+        return []
+    if int(time.time()) - int(entry.get("updatedAt") or 0) >= PROPERTY_TTL_SECONDS:
+        return []
+    return record.get("photos") or []
 
 
 # -------------------------------------------------------------- listing photos

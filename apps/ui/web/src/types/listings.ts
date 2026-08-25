@@ -34,6 +34,17 @@ export interface PropertyInfo {
   psfRange: string | null;
   projectUrl: string | null;
   imageUrl: string | null;
+  /**
+   * The development's own gallery, which is a different set from a unit's listing
+   * photos: this one shows the building, that one the flat someone is selling. A search
+   * result carries the count with an empty list, since the URLs would add hundreds of
+   * kilobytes to a payload the browser keeps in sessionStorage, and the carousel asks
+   * the server for them when it opens. A shortlisted property carries the list itself,
+   * snapshotted with the rest of its info. Both are absent on results cached before
+   * this existed, so read them defensively.
+   */
+  photos?: string[];
+  photoCount?: number;
   enrichment: Enrichment;
 }
 
@@ -253,6 +264,11 @@ export interface ShortlistResponse {
 
 /** One listing's photos, asked for when its carousel opens. */
 export interface ListingPhotosResponse {
+  photos: string[];
+}
+
+/** One development's own gallery photos, asked for the same way and kept apart. */
+export interface PropertyPhotosResponse {
   photos: string[];
 }
 

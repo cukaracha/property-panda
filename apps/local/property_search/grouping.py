@@ -107,6 +107,14 @@ def _build_property(property_id: str, listings: list, enrichment: dict) -> dict:
             "psfRange": enrichment.get("psfRange") or "",
             "projectUrl": enrichment.get("projectUrl") or "",
             "imageUrl": enrichment.get("imageUrl") or "",
+            # The project's own gallery, read as two independent keys for the reason
+            # _build_unit gives: a search result carries the count with an empty list,
+            # since the URLs are far too bulky to put on every property and the carousel
+            # asks the server for them when it opens. A shortlisted property carries the
+            # list it snapshotted, and group_shortlist passes that info block through
+            # whole rather than coming back through here.
+            "photos": [],
+            "photoCount": len(enrichment.get("photos") or []),
             "enrichment": "ok" if enrichment.get("topYear") else "unavailable",
         },
         "unitTypes": unit_types,

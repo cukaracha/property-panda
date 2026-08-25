@@ -417,6 +417,10 @@ MAX_FLOORPLANS = 20
 # Far higher than the floorplan cap, because a listing carries photos in a different
 # order of quantity: 36 was the most on any one card during the discovery capture.
 MAX_PHOTOS = 60
+# The project's own gallery, which is a different set from the listing photos above and
+# is capped separately. Nine on the project probed during the spike, and the same ceiling
+# is plenty of headroom for a development that shows off more of itself.
+MAX_PROPERTY_PHOTOS = 60
 
 
 def clean_url(value, field: str, max_chars: int = 500) -> str:
@@ -484,6 +488,8 @@ def clean_property_info(raw) -> dict:
     if enrichment not in ("ok", "unavailable"):
         raise ValueError("enrichment must be ok or unavailable")
 
+    photos = clean_url_list(raw.get("photos"), "photos", MAX_PROPERTY_PHOTOS)
+
     return {
         "district": clean_text(raw.get("district"), "district", 40),
         "districtName": clean_text(raw.get("districtName"), "districtName", 100),
@@ -498,6 +504,12 @@ def clean_property_info(raw) -> dict:
         "psfRange": clean_text(raw.get("psfRange"), "psfRange", 100),
         "projectUrl": clean_url(raw.get("projectUrl"), "projectUrl"),
         "imageUrl": clean_url(raw.get("imageUrl"), "imageUrl"),
+        # The gallery is stored whole here rather than as a count, because a shortlist
+        # outlives the cache row the carousel would otherwise fetch from. The count is
+        # derived from the list that survived cleaning, so a snapshot cannot advertise
+        # photos it does not carry.
+        "photos": photos,
+        "photoCount": len(photos),
         "enrichment": enrichment,
     }
 

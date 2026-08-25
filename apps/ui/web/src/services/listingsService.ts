@@ -27,6 +27,7 @@ import type {
   HiddenEntity,
   HiddenScope,
   ListingPhotosResponse,
+  PropertyPhotosResponse,
   ListSavedSearchesResponse,
   MutationResponse,
   SavedSearch,
@@ -102,6 +103,21 @@ export async function getSearchResults(jobId: string): Promise<SearchResultsResp
 export async function fetchListingPhotos(listingId: string): Promise<ListingPhotosResponse> {
   const response = await fetch(`${API_URL}/listings/photos/${encodeURIComponent(listingId)}`);
   const data = await readBody<ListingPhotosResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to load the photos');
+  return data;
+}
+
+/**
+ * One development's own gallery photos, asked for when the property card's carousel
+ * opens. The mirror of the call above and deliberately not the same one: these are
+ * photos of the project, scraped from its own page and served by its own route, and the
+ * two sets are never merged.
+ */
+export async function fetchPropertyPhotos(propertyId: string): Promise<PropertyPhotosResponse> {
+  const response = await fetch(
+    `${API_URL}/listings/property-photos/${encodeURIComponent(propertyId)}`
+  );
+  const data = await readBody<PropertyPhotosResponse>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to load the photos');
   return data;
 }

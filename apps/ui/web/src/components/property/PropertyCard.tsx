@@ -4,6 +4,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import PropertyInfo from './PropertyInfo';
+import PropertyPhotosModal from './PropertyPhotosModal';
 import UnitsTable from './UnitsTable';
 import type { ListingRow, Property } from '../../types/listings';
 import { cn } from '../../lib/utils';
@@ -49,6 +50,17 @@ export interface PropertyCardProps {
  * number of properties carry no image at all and any of the rest can fail to load, so
  * the fallback tile is a normal state of the card rather than an error case.
  *
+ * It opens the development's photo gallery, which is a different set from the photos of
+ * any unit in the table below. One rule decides whether it is clickable at all: a hero
+ * that is showing, and a gallery to show. That leaves the fallback tile inert, which is
+ * the point -- a generic building icon is no invitation to look at photos, and since the
+ * hero *is* the gallery's first photo, a property with no hero has no gallery either. A
+ * hero that failed to load takes the carousel with it for the same reason, rather than
+ * leaving a tile that is sometimes clickable for reasons the user cannot see.
+ *
+ * The gallery is held here rather than lifted, as UnitsTable holds its own modals:
+ * looking at photos touches no store.
+ *
  * The name and its property type badge sit on one nowrap row, the name free to
  * shrink and wrap inside itself. Letting the row wrap instead dropped the badge
  * onto its own line at the widths where names are longest, which is exactly where
@@ -68,25 +80,43 @@ export default function PropertyCard({
   emptyMessage,
 }: PropertyCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const rows = toListingRows(property, newSince);
   const visibleRows = rows.filter(row => !hiddenUnitIds?.has(String(row.listingId)));
   const hiddenCount = rows.length - visibleRows.length;
 
+  const hasImage = Boolean(property.info.imageUrl) && !imageFailed;
+  const canOpenPhotos = hasImage && (property.info.photoCount ?? 0) > 0;
+
+  const thumbnail = hasImage ? (
+    <img
+      src={property.info.imageUrl ?? ''}
+      alt=''
+      loading='lazy'
+      onError={() => setImageFailed(true)}
+      className='h-16 w-16 rounded-photo border border-line bg-photo object-cover sm:h-24 sm:w-24'
+    />
+  ) : (
+    <div className='flex h-16 w-16 items-center justify-center rounded-photo border border-line bg-sunken sm:h-24 sm:w-24'>
+      <Building2 size={24} className='text-subtle' />
+    </div>
+  );
+
   return (
     <Card className='p-5 transition-shadow hover:shadow-md'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
-        {property.info.imageUrl && !imageFailed ? (
-          <img
-            src={property.info.imageUrl}
-            alt=''
-            loading='lazy'
-            onError={() => setImageFailed(true)}
-            className='h-16 w-16 shrink-0 rounded-photo border border-line bg-photo object-cover sm:h-24 sm:w-24'
-          />
+        {canOpenPhotos ? (
+          <button
+            type='button'
+            className='shrink-0 cursor-pointer rounded-photo transition-opacity hover:opacity-90'
+            title='View photos'
+            aria-label={`View photos of ${property.name}`}
+            onClick={() => setPhotosOpen(true)}
+          >
+            {thumbnail}
+          </button>
         ) : (
-          <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-photo border border-line bg-sunken sm:h-24 sm:w-24'>
-            <Building2 size={24} className='text-subtle' />
-          </div>
+          <div className='shrink-0'>{thumbnail}</div>
         )}
         {/* A real flex basis, not flex-1: at flex:1 1 0% the column shrinks to nothing
             against the actions beside it and the name breaks one glyph per line. */}
@@ -165,6 +195,11 @@ export default function PropertyCard({
           {hiddenCount} hidden {hiddenCount === 1 ? 'unit is' : 'units are'} not shown.
         </p>
       )}
+
+      <PropertyPhotosModal
+        property={photosOpen ? property : null}
+        onClose={() => setPhotosOpen(false)}
+      />
     </Card>
   );
 }
