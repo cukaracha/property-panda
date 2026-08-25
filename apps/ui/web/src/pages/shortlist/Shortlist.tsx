@@ -50,7 +50,7 @@ export default function Shortlist() {
       <div className='page-scroll'>
         <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
           <div>
-            <h1 className='type-ui-h1 text-strong'>Shortlist</h1>
+            <h1 className='type-ui-page-title text-strong'>Shortlist</h1>
             <p className='type-ui-caption mt-1'>
               {unitCount} {unitCount === 1 ? 'unit' : 'units'} across {propertyCount}{' '}
               {propertyCount === 1 ? 'property' : 'properties'}.
@@ -60,11 +60,11 @@ export default function Shortlist() {
           {error && <p className='text-sm text-danger'>{error}</p>}
 
           {isLoading ? (
-            <Card className='flex items-center justify-center p-10'>
+            <Card className='flex items-center justify-center px-6 py-16'>
               <Spinner />
             </Card>
           ) : properties.length === 0 ? (
-            <Card className='p-10 text-center'>
+            <Card className='px-6 py-16 text-center'>
               <p className='type-ui-title text-strong'>Nothing shortlisted yet</p>
               <p className='type-ui-sm mt-1 text-muted'>
                 Run a search and click the heart on any unit to keep it here.

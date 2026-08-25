@@ -567,7 +567,7 @@ export default function PropertySearchResults() {
                 detail={status?.errorDetail}
               />
             ) : expired ? (
-              <Card className='p-10 text-center'>
+              <Card className='px-6 py-16 text-center'>
                 <p className='type-ui-title text-strong'>These results are no longer available</p>
                 <p className='type-ui-sm mt-1 text-muted'>
                   The scrape they came from has been cleared out. Go back to the search and run it
@@ -594,14 +594,14 @@ export default function PropertySearchResults() {
                 )}
 
                 {allProperties.length === 0 ? (
-                  <Card className='p-10 text-center'>
+                  <Card className='px-6 py-16 text-center'>
                     <p className='type-ui-title text-strong'>No properties matched</p>
                     <p className='type-ui-sm mt-1 text-muted'>
                       Try widening the price range, adding districts, or scanning more pages.
                     </p>
                   </Card>
                 ) : visibleProperties.length === 0 ? (
-                  <Card className='p-10 text-center'>
+                  <Card className='px-6 py-16 text-center'>
                     <p className='type-ui-title text-strong'>Every result is hidden</p>
                     <p className='type-ui-sm mt-1 text-muted'>
                       Open the hidden items panel to bring a property back.

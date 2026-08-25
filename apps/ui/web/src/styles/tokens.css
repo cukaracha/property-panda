@@ -221,19 +221,6 @@
   --text-6xl: 62px;
   --text-7xl: 80px;
 
-  /* app-scale ramp used by the .type-ui-* roles in app.css */
-  --t-ui-2xs: 11px;
-  --t-ui-xs: 12px;
-  --t-ui-sm: 13px;
-  --t-ui-base: 14px;
-  --t-ui-md: 15px;
-  --t-ui-lg: 17px;
-  --t-ui-xl: 20px;
-  --t-ui-h3: 20px;
-  --t-ui-h2: 24px;
-  --t-ui-h1: 30px;
-  --t-ui-display: 38px;
-
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -264,8 +251,13 @@
 
   --type-data-font: var(--font-mono);
   --type-data-size: var(--text-xs);
+  --type-data-size-sm: var(--text-2xs);
   --type-data-weight: var(--weight-medium);
   --type-data-tracking: var(--tracking-wide);
+
+  /* Line length for uninterrupted prose. Mapped onto Tailwind's own
+     --container-prose in theme.css, so `max-w-prose` carries it. */
+  --measure-prose: 68ch;
 
   /* ---- Space: 4px base grid ---- */
   --space-1: 4px;

@@ -57,8 +57,8 @@ export default function ResultsMapPanel({
         <>
           <div className='flex items-start justify-between gap-2'>
             <div className='min-w-0'>
-              <h2 className='type-ui-h3 text-strong'>Map view</h2>
-              <p className='type-ui-caption mt-0.5'>
+              <h2 className='type-ui-title text-strong'>Map view</h2>
+              <p className='type-ui-caption mt-1'>
                 {isFiltering ? 'filtering these results' : 'Pan, zoom or tap a district'}
               </p>
             </div>

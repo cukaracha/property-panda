@@ -105,7 +105,9 @@ export default function ProfilePictureCard({
               </Button>
             )}
 
-            <p className='text-xs text-muted'>Supported formats: JPG, PNG, GIF (max 5MB)</p>
+            <p className='max-w-prose text-xs text-muted'>
+              Supported formats: JPG, PNG, GIF (max 5MB)
+            </p>
           </div>
         </div>
       </CardContent>

@@ -85,7 +85,7 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
 
       {note && (
         <div className='w-full max-w-[520px] rounded-card border border-line-brand bg-brand-subtle p-4 text-left'>
-          <p className='type-ui-eyebrow mb-1.5 flex items-center gap-1.5 text-brand'>
+          <p className='type-ui-eyebrow mb-2 flex items-center gap-1.5 text-brand'>
             <Hand size={13} />
             This one needs you
           </p>
@@ -133,7 +133,7 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
               >
                 {STATUS_LABELS[step]}
               </span>
-              <span className={cn('pp-unfurl type-data text-muted', detail && 'is-shown')}>
+              <span className={cn('pp-unfurl type-data-xs text-muted', detail && 'is-shown')}>
                 {detail}
               </span>
             </li>

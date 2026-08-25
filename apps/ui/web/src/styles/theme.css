@@ -9,12 +9,13 @@
    TWO NAMESPACE COLLISIONS, both resolved by renaming the UTILITY and
    never the token:
 
-   1. The app-scale type sizes (--t-ui-*) and the design system's
-      --text-2xs … --text-7xl are intentionally NOT mapped — Tailwind's
-      text-* namespace is font-size, so mapping the colour aliases
-      (--text-strong, --text-body, …) under those names would clobber
-      the size scale. Colours map as --color-strong / --color-body /
-      --color-muted / --color-subtle instead.
+   1. The size ramp (--text-2xs … --text-7xl) is intentionally NOT
+      mapped — Tailwind's text-* namespace is font-size, so mapping the
+      colour aliases (--text-strong, --text-body, …) under those names
+      would clobber the size scale. Colours map as --color-strong /
+      --color-body / --color-muted / --color-subtle instead. Leaving the
+      ramp out is also what makes it win: tokens.css is unlayered, so its
+      `--text-sm: 14px` beats Tailwind's own .875rem in @layer theme.
 
    2. --border-subtle and --text-subtle would both want the single
       Tailwind name `subtle` in the flat --color-* namespace. Text keeps
@@ -101,4 +102,10 @@
   /* ---------- Motion ---------- */
   --ease-standard: var(--ease-standard);
   --ease-entrance: var(--ease-entrance);
+
+  /* ---------- Measure ----------
+     Repoints Tailwind's own prose width (65ch by default) at the design's
+     measure, so `max-w-prose` caps a text block without a bracket value.
+     The namespace behind max-w-* is --max-width-*, not --container-*. */
+  --max-width-prose: var(--measure-prose);
 }

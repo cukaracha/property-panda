@@ -113,7 +113,7 @@ export default function Modal({
         className={cn('modal-card relative', fillHeight && 'modal-card--fill', maxWidth)}
         onClick={e => e.stopPropagation()}
       >
-        <div className='modal-head relative px-[22px] pb-4 pt-[22px]'>
+        <div className='modal-head relative px-6 pb-4 pt-5'>
           {dismissible && (
             <button
               type='button'
@@ -126,16 +126,14 @@ export default function Modal({
           )}
           <div className='flex items-start gap-3.5 pr-8'>
             {icon && <div className={iconColor}>{icon}</div>}
-            <div className='flex min-w-0 flex-col gap-[5px]'>
+            <div className='flex min-w-0 flex-col gap-1'>
               <div className='type-ui-title text-strong'>{title}</div>
               {description && <div className='type-ui-caption'>{description}</div>}
             </div>
           </div>
         </div>
-        <div className='modal-body px-[22px] pb-[22px] pt-1.5'>{children}</div>
-        {footer && (
-          <div className='modal-foot flex justify-end gap-2.5 px-[22px] pb-[22px]'>{footer}</div>
-        )}
+        <div className='modal-body px-6 pb-6 pt-0'>{children}</div>
+        {footer && <div className='modal-foot flex justify-end gap-2 px-6 pb-6 pt-0'>{footer}</div>}
       </div>
     </div>
   );

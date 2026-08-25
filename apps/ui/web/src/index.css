@@ -55,30 +55,6 @@ body {
   flex-direction: column;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-display);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
-  margin: 0;
-  text-wrap: balance;
-}
-h1,
-h2 {
-  letter-spacing: var(--tracking-display);
-  font-weight: var(--weight-bold);
-}
-
-p {
-  margin: 0;
-  text-wrap: pretty;
-}
-
 /* No hover underlines by default — interactive surfaces (nav items, rows,
    buttons-as-links) carry their own hover treatment. Plain text links that
    have no other hover cue opt back in (.link). */
@@ -91,12 +67,16 @@ img {
   display: block;
 }
 
-/* Element default COLORS live in @layer base so Tailwind utility colors win.
-   `@import "tailwindcss"` puts utilities in @layer utilities; unlayered rules
-   beat ALL layered rules regardless of specificity, so an unlayered
-   `h1 { color }` / `a { color }` would silently override `text-strong` etc.
-   Keeping only the colour here — not margin/font — fixes that without
-   shifting any spacing. */
+/* Element defaults live in @layer base so both Tailwind utilities and the
+   .type-ui-* roles win over them. `@import "tailwindcss"` declares the layer
+   order properties, theme, base, components, utilities, and an unlayered rule
+   beats ALL layered rules regardless of specificity — so an unlayered
+   `h1 { font-size }` would override .type-ui-page-title, and an unlayered
+   `p { margin: 0 }` would kill every mt-1 and mb-2 in the app. Tailwind's own
+   preflight sits earlier in this same layer, so these still win over it, on
+   source order alone. The sizes are a safety net for a heading shipped without
+   a role class; anything carrying .type-ui-* overrides them from
+   @layer components. */
 @layer base {
   h1,
   h2,
@@ -104,7 +84,40 @@ img {
   h4,
   h5,
   h6 {
+    font-family: var(--font-display);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-tight);
+    margin: 0;
+    text-wrap: balance;
     color: var(--text-strong);
+  }
+  h1,
+  h2 {
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--weight-bold);
+  }
+  h1 {
+    font-size: var(--text-4xl);
+  }
+  h2 {
+    font-size: var(--text-3xl);
+  }
+  h3 {
+    font-size: var(--text-2xl);
+  }
+  h4 {
+    font-size: var(--text-xl);
+  }
+  h5 {
+    font-size: var(--text-lg);
+  }
+  h6 {
+    font-size: var(--text-base);
+  }
+  p {
+    margin: 0;
+    text-wrap: pretty;
   }
   a {
     color: var(--text-link);

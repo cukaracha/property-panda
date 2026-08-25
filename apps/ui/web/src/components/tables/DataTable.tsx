@@ -71,11 +71,11 @@ function DataTable<T>({
         <thead>
           <tr className='border-b border-line-2'>
             {columns.map(col => (
-              <th key={col.key} className='type-ui-eyebrow px-3 py-3 text-left'>
+              <th key={col.key} className='type-ui-eyebrow px-4 py-3 text-left'>
                 {col.header}
               </th>
             ))}
-            {actions && <th className='type-ui-eyebrow px-3 py-3 text-right'>Actions</th>}
+            {actions && <th className='type-ui-eyebrow px-4 py-3 text-right'>Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -94,7 +94,7 @@ function DataTable<T>({
               onKeyDown={onRowClick ? event => handleRowKeyDown(event, item) : undefined}
             >
               {columns.map(col => (
-                <td key={col.key} className='px-3 py-3 text-sm text-body'>
+                <td key={col.key} className='px-4 py-3 text-sm text-body'>
                   {col.render
                     ? col.render(item)
                     : String((item as Record<string, unknown>)[col.key] ?? '')}
@@ -102,7 +102,7 @@ function DataTable<T>({
               ))}
               {actions && (
                 <td
-                  className='px-3 py-3 text-right'
+                  className='px-4 py-3 text-right'
                   onClick={onRowClick ? event => event.stopPropagation() : undefined}
                 >
                   <div className='flex items-center justify-end gap-1'>{actions(item)}</div>

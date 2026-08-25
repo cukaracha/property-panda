@@ -42,7 +42,7 @@ export default function AlwaysHidden() {
     <div className='page-scroll'>
       <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
         <div>
-          <h1 className='type-ui-h1 text-strong'>Always hidden</h1>
+          <h1 className='type-ui-page-title text-strong'>Always hidden</h1>
           <p className='type-ui-caption mt-1'>
             {alwaysHidden.length} {alwaysHidden.length === 1 ? 'item' : 'items'} left out of every
             search.
@@ -52,13 +52,13 @@ export default function AlwaysHidden() {
         {error && <p className='text-sm text-danger'>{error}</p>}
 
         {isLoading ? (
-          <Card className='flex items-center justify-center p-10'>
+          <Card className='flex items-center justify-center px-6 py-16'>
             <Spinner />
           </Card>
         ) : alwaysHidden.length === 0 ? (
-          <Card className='p-10 text-center'>
+          <Card className='px-6 py-16 text-center'>
             <p className='type-ui-title text-strong'>Nothing is always hidden</p>
-            <p className='type-ui-sm mt-1 text-muted'>
+            <p className='type-ui-sm mx-auto mt-1 max-w-prose text-muted'>
               Hide a property or a unit from the search results and tick always hide to keep it out
               of every search.
             </p>

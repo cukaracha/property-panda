@@ -121,7 +121,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
   const renderRanges = (fields: RangeField[]) =>
     fields.map(field => (
       <div key={field.label}>
-        <p className='type-ui-eyebrow mb-1.5'>{field.label}</p>
+        <p className='type-ui-eyebrow mb-2'>{field.label}</p>
         <div className='flex items-center gap-2'>
           <Input
             type='text'
@@ -244,7 +244,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
 
           <div className='grid gap-4 sm:grid-cols-2'>
             <div>
-              <p className='type-ui-eyebrow mb-1.5'>Listed</p>
+              <p className='type-ui-eyebrow mb-2'>Listed</p>
               <DropdownMenu
                 aria-label='Listed within'
                 value={form.lastPosted}
@@ -259,7 +259,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
               </DropdownMenu>
             </div>
             <div>
-              <p className='type-ui-eyebrow mb-1.5'>Distance to MRT or LRT</p>
+              <p className='type-ui-eyebrow mb-2'>Distance to MRT or LRT</p>
               <DropdownMenu
                 aria-label='Distance to MRT or LRT'
                 value={form.distanceToMrt}
@@ -274,7 +274,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
               </DropdownMenu>
             </div>
             <div>
-              <p className='type-ui-eyebrow mb-1.5'>{MAX_PAGES_LABEL}</p>
+              <p className='type-ui-eyebrow mb-2'>{MAX_PAGES_LABEL}</p>
               <DropdownMenu
                 aria-label={MAX_PAGES_LABEL}
                 value={form.maxPages}
@@ -288,7 +288,7 @@ export default function SearchFilterFields({ form, onChange }: SearchFilterField
               </DropdownMenu>
             </div>
             <div className='sm:col-span-2'>
-              <p className='type-ui-eyebrow mb-1.5'>Keyword</p>
+              <p className='type-ui-eyebrow mb-2'>Keyword</p>
               <Input
                 type='text'
                 placeholder='Words in the listing, e.g. penthouse'

@@ -36,10 +36,13 @@ export interface UnitsTableProps {
  * carries the buttons that must not do that. Hiding a row is reversible: it drops
  * out of the render, but the result set keeps it.
  *
- * The seven tracks below plus the cell padding come to exactly 720px, which is
- * the width the wrapper starts scrolling sideways at. Each one is sized for its
- * longest real value, the "Not available" fallback and a four figure psf
- * included, so nothing is measured on the header alone.
+ * The seven tracks below sum to 720px on their own, and box-sizing: border-box
+ * puts the cell padding inside each track rather than beside it. Each one is sized
+ * for its longest real value, the "Not available" fallback and a four figure psf
+ * included, so nothing is measured on the header alone. Bedrooms, Baths and Price
+ * still need more than their track allows, so table-layout: auto widens them and
+ * the wrapper starts scrolling nearer 770px. minWidth is a floor under that, not
+ * the threshold itself.
  *
  * Hiding is dropped rather than disabled when the caller passes no handler, which
  * is how the shortlist reuses this table without a flag saying which screen it is on.

@@ -44,14 +44,14 @@ export default function HiddenEntityList({ rows, emptyMessage }: HiddenEntityLis
   return (
     <div className='overflow-x-auto'>
       <ul className='min-w-[400px] divide-y divide-line border-y border-line-2'>
-        <li className='hidden-row type-ui-eyebrow py-2'>
+        <li className='hidden-row type-ui-eyebrow px-4 py-3'>
           <span>Type</span>
           <span>Item</span>
           <span>Hidden in</span>
           <span />
         </li>
         {rows.map(({ entity, scopeLabel, onUnhide }) => (
-          <li key={entity.entityKey} className='hidden-row py-2'>
+          <li key={entity.entityKey} className='hidden-row px-4 py-3'>
             <span>
               <Badge>{KIND_LABEL[entity.scope]}</Badge>
             </span>

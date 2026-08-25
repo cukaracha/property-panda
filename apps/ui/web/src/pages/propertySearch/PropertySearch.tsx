@@ -120,7 +120,7 @@ export default function PropertySearch() {
     <>
       <div className='page-scroll'>
         <div className='mx-auto max-w-[1080px] space-y-6 px-6 pb-24 pt-10'>
-          <h1 className='type-ui-h1 text-strong'>Property search</h1>
+          <h1 className='type-ui-page-title text-strong'>Property search</h1>
 
           <SearchFilterPanel
             form={form}
