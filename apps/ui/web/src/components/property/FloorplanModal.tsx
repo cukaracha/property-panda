@@ -1,5 +1,6 @@
 import { Ruler } from 'lucide-react';
 import Modal from '../modals/Modal';
+import PhotoCarousel from './PhotoCarousel';
 import type { ListingRow } from '../../types/listings';
 import { formatCurrency } from '../../lib/listingsFormat';
 
@@ -15,6 +16,11 @@ interface FloorplanModalProps {
  *
  * Results scraped before the parser kept these have no images at all, so this
  * renders nothing rather than an empty frame.
+ *
+ * Shown over the shared carousel, which is what gives a plan its zoom. A floorplan is
+ * a line drawing full of dimensions printed small, so of the three image dialogs this
+ * is the one that most needs to be looked at closely. The plans ride along on the row,
+ * so there is nothing to fetch and no failure to report.
  */
 export default function FloorplanModal({ row, onClose }: FloorplanModalProps) {
   const plans = row?.floorplans ?? [];
@@ -28,22 +34,16 @@ export default function FloorplanModal({ row, onClose }: FloorplanModalProps) {
       description={`${row.unitTypeLabel} at ${formatCurrency(row.price)}`}
       icon={<Ruler size={20} />}
       iconColor='text-brand'
-      maxWidth='max-w-[720px]'
+      maxWidth='max-w-[960px]'
+      fillHeight
     >
-      <div className='flex max-h-[70vh] flex-col gap-4 overflow-y-auto'>
-        {plans.map((src, index) => (
-          <figure key={src} className='flex flex-col gap-2'>
-            {plans.length > 1 && (
-              <figcaption className='type-ui-eyebrow'>{`${index + 1} of ${plans.length}`}</figcaption>
-            )}
-            <img
-              src={src}
-              alt={`Floorplan ${index + 1} of ${plans.length} for this ${row.unitTypeLabel} unit`}
-              className='w-full rounded-photo border border-line bg-photo'
-            />
-          </figure>
-        ))}
-      </div>
+      <PhotoCarousel
+        photos={plans}
+        isLoading={false}
+        error=''
+        subject={`this ${row.unitTypeLabel} unit's floorplans`}
+        emptyMessage='This listing has no floorplans.'
+      />
     </Modal>
   );
 }

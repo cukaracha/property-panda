@@ -1170,6 +1170,75 @@
   }
 
   /* ==========================================================
+     PHOTO CAROUSEL — the stage frames and clips, the viewport inside
+     it carries the gesture, and the zoom cluster rides on the same
+     glass as the map's control panel. Sibling of the viewport rather
+     than a child of it, so a press on a button is never a pan.
+     ========================================================== */
+  .pp-photo__viewport {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* What makes a touch drag pan instead of scroll. It costs native pinch-to-zoom,
+       which is the same trade the map makes, and the dialog body does not scroll. */
+    touch-action: none;
+    user-select: none;
+  }
+  .pp-photo__controls {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-glass);
+    backdrop-filter: blur(6px);
+    box-shadow: var(--shadow-sm);
+  }
+  /* The zoom group and the reset stand apart on either side of a hairline, as they do
+     on the map. 6px of padding beside the 4px flex gap leaves the line centred. */
+  .pp-photo__zoom {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 6px;
+    border-right: 1px solid var(--border-subtle);
+  }
+  /* Wide enough for 100% through 600%, so the buttons hold still while the level runs. */
+  .pp-photo__level {
+    min-width: 34px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .pp-photo__btn {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition-control);
+  }
+  .pp-photo__btn:hover:not(:disabled) {
+    background: var(--action-ghost-bg-hover);
+    color: var(--text-strong);
+  }
+  .pp-photo__btn:disabled {
+    color: var(--action-disabled-text);
+    cursor: default;
+  }
+
+  /* ==========================================================
      THE WAIT — a mark that breathes while the scrape runs, and step
      counts that unfurl on a width transition as their phase reports.
      Both are neutralised by the reduced-motion rule in index.css.

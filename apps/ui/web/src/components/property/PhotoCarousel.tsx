@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImageOff, Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
 import { cn } from '../../lib/utils';
+import { useImageZoom } from '../../hooks/useImageZoom';
 
 export interface PhotoCarouselProps {
   photos: string[];
@@ -15,16 +16,21 @@ export interface PhotoCarouselProps {
 }
 
 /**
- * A set of photos, one at a time over a strip of thumbnails, with the loading, error
+ * A set of images, one at a time over a strip of thumbnails, with the loading, error
  * and empty states of whatever is fetching them.
  *
- * It is the body of both photo dialogs and holds no fetch and no modal chrome of its
- * own, because the two differ only in where their photos come from: one shows the unit
- * that is for sale, the other the development around it. Those two sets are stored and
- * served apart and are never merged, but they are looked at in the same way.
+ * It is the body of all three image dialogs and holds no fetch and no modal chrome of
+ * its own, because they differ only in where their images come from: the unit that is
+ * for sale, the development around it, or that unit's floorplans. Those three sets are
+ * stored and served apart and are never merged, but they are looked at in the same way.
+ * Its copy says "image" rather than "photo" for the same reason.
  *
  * Numbered rather than captioned, for the reason FloorplanModal gives -- the source
  * repeats one SEO string across every image it carries.
+ *
+ * The stage zooms and pans like the district map, through useImageZoom. A scraped photo
+ * is often the only look at a room anyone gets, and letterboxed into a dialog there is
+ * no other way to read a detail in one.
  */
 export default function PhotoCarousel({
   photos,
@@ -41,16 +47,33 @@ export default function PhotoCarousel({
    * past a dead photo to a live one still shows the live one.
    */
   const [failed, setFailed] = useState<Set<string>>(new Set());
+  const {
+    scale,
+    isZoomed,
+    canZoomIn,
+    canZoomOut,
+    setStage,
+    imageRef,
+    imageStyle,
+    panHandlers,
+    zoomIn,
+    zoomOut,
+    reset,
+  } = useImageZoom();
 
   const count = photos.length;
 
-  // Wraps at both ends, so holding an arrow key never dead-ends on the last photo.
+  // Wraps at both ends, so holding an arrow key never dead-ends on the last photo. Every
+  // way of changing photo funnels through here, which is what makes this the one place
+  // the zoom has to be dropped: the next photo is a different picture, not a new view of
+  // the one being inspected.
   const show = useCallback(
     (next: number) => {
       if (count === 0) return;
+      reset();
       setIndex((next + count) % count);
     },
-    [count]
+    [count, reset]
   );
 
   useEffect(() => {
@@ -95,19 +118,36 @@ export default function PhotoCarousel({
 
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
-      <div className='relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-photo border border-line bg-photo'>
+      {/* The stage is the wheel target and the frame the photo is clipped to; the
+          viewport inside it is what the pan gesture runs on. The nav buttons and the
+          zoom cluster are siblings of that viewport rather than children, the same
+          trick the map's control panel uses: a gesture that starts on a button never
+          reaches the pan handler, while the wheel still bubbles up from anywhere. */}
+      <div
+        ref={setStage}
+        className='relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-photo border border-line bg-photo'
+      >
         {failed.has(current) ? (
-          <div className='flex flex-col items-center gap-2 px-6 text-center'>
+          <div className='flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center'>
             <ImageOff size={28} className='text-subtle' />
-            <p className='text-sm text-muted'>This photo is no longer available.</p>
+            <p className='text-sm text-muted'>This image is no longer available.</p>
           </div>
         ) : (
-          <img
-            src={current}
-            alt={`Photo ${index + 1} of ${count} of ${subject}`}
-            onError={() => markFailed(current)}
-            className='max-h-full max-w-full object-contain'
-          />
+          <div
+            className={cn('pp-photo__viewport', isZoomed && 'cursor-grab active:cursor-grabbing')}
+            {...panHandlers}
+          >
+            <img
+              ref={imageRef}
+              src={current}
+              alt={`Image ${index + 1} of ${count} of ${subject}`}
+              /* Off, or the browser's own image drag fights the pan. */
+              draggable={false}
+              style={imageStyle}
+              onError={() => markFailed(current)}
+              className='max-h-full max-w-full object-contain'
+            />
+          </div>
         )}
         {count > 1 && (
           <>
@@ -115,8 +155,8 @@ export default function PhotoCarousel({
               variant='secondary'
               size='icon'
               className='absolute left-3 top-1/2 -translate-y-1/2'
-              title='Previous photo'
-              aria-label='Previous photo'
+              title='Previous image'
+              aria-label='Previous image'
               onClick={() => show(index - 1)}
             >
               <ChevronLeft size={18} />
@@ -125,13 +165,55 @@ export default function PhotoCarousel({
               variant='secondary'
               size='icon'
               className='absolute right-3 top-1/2 -translate-y-1/2'
-              title='Next photo'
-              aria-label='Next photo'
+              title='Next image'
+              aria-label='Next image'
               onClick={() => show(index + 1)}
             >
               <ChevronRight size={18} />
             </Button>
           </>
+        )}
+
+        {/* Glass in the corner for the people who will not find the gesture. Hidden on a
+            photo that never arrived, where there is nothing to zoom into. */}
+        {!failed.has(current) && (
+          <div className='pp-photo__controls'>
+            <div className='pp-photo__zoom'>
+              <button
+                type='button'
+                className='pp-photo__btn'
+                aria-label='Zoom out'
+                title='Zoom out'
+                disabled={!canZoomOut}
+                onClick={zoomOut}
+              >
+                <Minus size={15} />
+              </button>
+              <span className='pp-photo__level type-ui-eyebrow' aria-live='polite'>
+                {`${Math.round(scale * 100)}%`}
+              </span>
+              <button
+                type='button'
+                className='pp-photo__btn'
+                aria-label='Zoom in'
+                title='Zoom in'
+                disabled={!canZoomIn}
+                onClick={zoomIn}
+              >
+                <Plus size={15} />
+              </button>
+            </div>
+            <button
+              type='button'
+              className='pp-photo__btn'
+              aria-label='Reset zoom'
+              title='Reset zoom'
+              disabled={!isZoomed}
+              onClick={reset}
+            >
+              <RotateCcw size={15} />
+            </button>
+          </div>
         )}
       </div>
 
@@ -147,8 +229,8 @@ export default function PhotoCarousel({
                 'h-14 w-20 shrink-0 overflow-hidden rounded-photo border bg-photo',
                 position === index ? 'border-line-brand' : 'border-line'
               )}
-              title={`Photo ${position + 1}`}
-              aria-label={`Show photo ${position + 1} of ${count}`}
+              title={`Image ${position + 1}`}
+              aria-label={`Show image ${position + 1} of ${count}`}
               aria-current={position === index}
               onClick={() => show(position)}
             >
