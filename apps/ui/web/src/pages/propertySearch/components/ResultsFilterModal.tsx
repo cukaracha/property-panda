@@ -69,9 +69,7 @@ export default function ResultsFilterModal({
         </>
       }
     >
-      {/* The card clips rather than scrolls, so the long half of the modal scrolls
-          inside its own box and leaves the footer where it is. */}
-      <div className='max-h-[60vh] overflow-y-auto pr-1'>
+      <div className='modal-scroll'>
         <SearchFilterFields form={draft} onChange={setDraft} facets={facets} />
       </div>
     </Modal>

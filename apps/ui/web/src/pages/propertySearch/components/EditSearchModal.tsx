@@ -109,9 +109,7 @@ export default function EditSearchModal({
         </>
       }
     >
-      {/* The card clips rather than scrolls, so the long half of the modal scrolls
-          inside its own box and leaves the footer where it is. */}
-      <div className='max-h-[60vh] overflow-y-auto pr-1'>
+      <div className='modal-scroll'>
         <label className='type-ui-eyebrow mb-2 block' htmlFor='edit-search-name'>
           Name
         </label>

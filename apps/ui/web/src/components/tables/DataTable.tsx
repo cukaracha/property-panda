@@ -85,7 +85,7 @@ function DataTable<T>({
               className={cn(
                 'border-b border-line transition-colors hover:bg-sunken',
                 onRowClick &&
-                  'cursor-pointer focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none'
+                  'cursor-pointer focus-visible:shadow-[inset_var(--shadow-focus)] focus-visible:outline-none'
               )}
               role={onRowClick ? 'link' : undefined}
               tabIndex={onRowClick ? 0 : undefined}

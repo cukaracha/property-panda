@@ -138,7 +138,7 @@ export default function PhotoCarousel({
       <div className='type-ui-eyebrow text-center'>{`${index + 1} of ${count}`}</div>
 
       {count > 1 && (
-        <div className='flex shrink-0 gap-2 overflow-x-auto pb-1'>
+        <div className='flex shrink-0 gap-2 overflow-x-auto p-1 -m-1'>
           {photos.map((src, position) => (
             <button
               key={src}

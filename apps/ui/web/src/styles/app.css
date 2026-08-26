@@ -566,6 +566,17 @@
   .modal-foot {
     flex: none;
   }
+  /* An inner scroller for the long half of a modal, so the card clips rather
+     than scrolls and the footer stays put. The lateral padding is room for the
+     3px focus halo, which a scroll container would otherwise clip off the
+     leftmost field; the negative margin puts the content back in line with the
+     header. */
+  .modal-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-inline: 4px;
+    margin-inline: -4px;
+  }
   /* A card that takes the height it is allowed rather than shrink-wrapping, for
      content that should grow into it. Its body stops scrolling and becomes a column,
      so the content sizes itself against the space instead of overflowing. */
