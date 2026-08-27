@@ -1212,9 +1212,10 @@
     backdrop-filter: blur(6px);
     box-shadow: var(--shadow-sm);
   }
-  /* The zoom group and the reset stand apart on either side of a hairline, as they do
-     on the map. 6px of padding beside the 4px flex gap leaves the line centred. */
-  .pp-photo__zoom {
+  /* Zoom, reset and save stand apart across hairlines, as the map's groups do. 6px of
+     padding beside the 4px flex gap leaves each line centred. */
+  .pp-photo__zoom,
+  .pp-photo__reset {
     display: flex;
     align-items: center;
     gap: 4px;

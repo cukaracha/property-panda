@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Download,
   ImageOff,
   Images,
   Minus,
@@ -33,6 +34,28 @@ export interface PhotoCarouselProps {
 interface StageLayers {
   slots: [number | null, number | null];
   live: 0 | 1;
+}
+
+/**
+ * A name to save one image under. The position goes into it because the source repeats a
+ * single SEO string across every image in a set -- the same thing that makes these
+ * numbered rather than captioned -- so without it every photo in a listing saves over the
+ * last one. The extension comes from what was actually served rather than from the URL,
+ * which here can end .jpg and come back a PNG.
+ */
+function downloadName(src: string, position: number, served: string): string {
+  const path = src.split('?')[0];
+  const base =
+    path
+      .slice(path.lastIndexOf('/') + 1)
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '-') || 'image';
+  /* image/svg+xml carries its extension ahead of the plus. jpeg is spelt jpg here, as
+     the source itself spells it and as anything that reads one expects. */
+  const fromType = served.startsWith('image/') ? served.slice(6).split('+')[0] : '';
+  const fromUrl = /\.([A-Za-z0-9]+)$/.exec(path)?.[1] ?? '';
+  const extension = fromType || fromUrl || 'jpg';
+  return `${base}-${position + 1}.${extension === 'jpeg' ? 'jpg' : extension}`;
 }
 
 /**
@@ -72,6 +95,17 @@ export default function PhotoCarousel({
    * past a dead photo to a live one still shows the live one.
    */
   const [failed, setFailed] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState(false);
+  /**
+   * Why the save failed, for the sources that would not come down. Per source for the
+   * reason the load failures above are: the state belongs to one image, so paging away
+   * from a photo that would not save clears the button on its own.
+   *
+   * The reason is carried rather than a flag because from the outside a request an
+   * extension blocked, a URL that has gone dead and a refused write all look identical,
+   * and the button is the only place most of this app's users will ever look.
+   */
+  const [saveFailed, setSaveFailed] = useState<Map<string, string>>(new Map());
   const stripRef = useRef<HTMLDivElement | null>(null);
   const {
     scale,
@@ -187,6 +221,78 @@ export default function PhotoCarousel({
   }
 
   const current = photos[index];
+  const saveError = saveFailed.get(current);
+  const saveLabel = saveError
+    ? `Could not download (${saveError}). Opens in a new tab.`
+    : 'Download image';
+
+  /**
+   * Save the image on show. The bytes are fetched and handed over as a blob rather than
+   * linked to, because the anchor's download attribute is ignored across origins and
+   * these all live on the source's CDN: a plain link would navigate to the photo instead
+   * of saving it.
+   *
+   * Nothing is cancelled when the photo changes or the dialog closes. The point of the
+   * press was to end up with the file, so a save the user has already asked for runs to
+   * the end rather than being dropped for having paged on.
+   */
+  const save = async () => {
+    if (isSaving) return;
+    // A photo that would not come down over fetch is still reachable by eye, so the next
+    // press opens it in a tab to be saved by hand. Opened straight off the click and not
+    // after an await: only a window the gesture itself opens gets past the popup blocker.
+    if (saveError) {
+      window.open(current, '_blank', 'noopener');
+      return;
+    }
+    setIsSaving(true);
+    /* Which step to name when the catch fires. The three fail for unrelated reasons. */
+    let stage = 'fetch';
+    try {
+      /**
+       * cache: 'no-store' is what makes this work at all, and it is not an optimisation.
+       *
+       * The stage above has already displayed this photo through a plain <img>, which
+       * asks for it without an Origin header. The CDN only attaches its
+       * Access-Control-Allow-Origin to responses whose request carried one, and the
+       * reply it gives the <img> is cacheable for a year while omitting Origin from its
+       * own Vary list. So the browser holds a copy with no CORS header on it and
+       * considers that copy a valid answer to any later request for the same URL. A
+       * plain fetch is handed it and fails the CORS check against a response that never
+       * went near CORS, which is why this failed on every photo the user could see.
+       *
+       * Going past the cache puts an Origin on the wire, which is all the CDN needed.
+       * 'no-store' rather than 'reload' so the copy the <img> tags share is left alone:
+       * reloading would replace it with a Vary: Origin copy that the next <img> could
+       * not use, and paging the strip would re-download every photo already on screen.
+       */
+      const response = await fetch(current, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      stage = 'read';
+      const blob = await response.blob();
+      stage = 'write';
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = downloadName(current, index, blob.type);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoking in the same tick races the save in some browsers, which then write an
+      // empty file. The object lives in this page alone, so the wait costs nothing.
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (err) {
+      // Swallowing this is what made the first cut of this button impossible to account
+      // for. The console takes the error whole, with the source that provoked it, and
+      // the tooltip takes the gist so the failure can be read without opening one.
+      console.error(`Photo download failed at ${stage}:`, current, err);
+      const reason = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      setSaveFailed(previous => new Map(previous).set(current, `${stage}, ${reason}`));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   /* Mono and tabular, so the number holds still as the set is paged through. */
   const counter = (
     <span className='type-data-xs inline-flex h-[26px] flex-none items-center justify-center whitespace-nowrap rounded-pill border border-line bg-sunken px-[11px] tabular-nums'>
@@ -295,15 +401,35 @@ export default function PhotoCarousel({
                 <Plus size={15} />
               </button>
             </div>
+            <div className='pp-photo__reset'>
+              <button
+                type='button'
+                className='pp-photo__btn'
+                aria-label='Reset zoom'
+                title='Reset zoom'
+                disabled={!isZoomed}
+                onClick={reset}
+              >
+                <RotateCcw size={15} />
+              </button>
+            </div>
             <button
               type='button'
               className='pp-photo__btn'
-              aria-label='Reset zoom'
-              title='Reset zoom'
-              disabled={!isZoomed}
-              onClick={reset}
+              aria-label={saveLabel}
+              title={saveLabel}
+              disabled={isSaving}
+              onClick={save}
             >
-              <RotateCcw size={15} />
+              {/* Hidden from the reader: the button is already labelled, and the
+                  spinner's own status role would announce over that label. */}
+              {isSaving ? (
+                <Spinner size='sm' aria-hidden />
+              ) : saveError ? (
+                <CircleAlert size={15} />
+              ) : (
+                <Download size={15} />
+              )}
             </button>
           </div>
         )}
