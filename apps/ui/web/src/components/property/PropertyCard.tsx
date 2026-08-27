@@ -4,12 +4,14 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import PropertyInfo from './PropertyInfo';
+import PropertyMapModal from './PropertyMapModal';
 import PropertyPhotosModal from './PropertyPhotosModal';
 import UnitsTable from './UnitsTable';
 import type { ListingRow, Property } from '../../types/listings';
 import { cn } from '../../lib/utils';
 import { formatText } from '../../lib/listingsFormat';
 import { toListingRows } from '../../lib/listingRows';
+import { canOpenMap } from '../../lib/propertyLocation';
 
 export interface PropertyCardProps {
   property: Property;
@@ -83,8 +85,11 @@ function unitFootnote(hiddenCount: number, filteredCount: number): string {
  * hero that failed to load takes the carousel with it for the same reason, rather than
  * leaving a tile that is sometimes clickable for reasons the user cannot see.
  *
- * The gallery is held here rather than lifted, as UnitsTable holds its own modals:
- * looking at photos touches no store.
+ * The address opens the property on a map, by the same rule: a line with an address
+ * to show becomes a button, a line reading "Not available" stays the text it is.
+ *
+ * The gallery and the map are held here rather than lifted, as UnitsTable holds its
+ * own modals: neither one touches a store.
  *
  * The name and its property type badge sit on one nowrap row, the name free to
  * shrink and wrap inside itself. Letting the row wrap instead dropped the badge
@@ -107,6 +112,7 @@ export default function PropertyCard({
 }: PropertyCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const rows = toListingRows(property, newSince);
   const hiddenCount = rows.filter(row => hiddenUnitIds?.has(String(row.listingId))).length;
   const visibleRows = rows.filter(
@@ -119,6 +125,8 @@ export default function PropertyCard({
 
   const hasImage = Boolean(property.info.imageUrl) && !imageFailed;
   const canOpenPhotos = hasImage && (property.info.photoCount ?? 0) > 0;
+  const canShowMap = canOpenMap(property.info);
+  const address = formatText(property.info.address);
 
   const thumbnail = hasImage ? (
     <img
@@ -159,10 +167,23 @@ export default function PropertyCard({
               <Badge className='shrink-0'>{property.info.propertyType}</Badge>
             )}
           </div>
-          <p className='type-ui-caption mt-1 flex items-center gap-1.5'>
-            <MapPin size={13} className='text-brand' />
-            {formatText(property.info.address)}
-          </p>
+          {canShowMap ? (
+            <button
+              type='button'
+              className='type-ui-caption mt-1 flex cursor-pointer items-center gap-1.5 text-left underline-offset-2 transition-colors hover:text-brand hover:underline'
+              title='Show on the map'
+              aria-label={`Show ${property.name} on the map`}
+              onClick={() => setMapOpen(true)}
+            >
+              <MapPin size={13} className='text-brand' />
+              {address}
+            </button>
+          ) : (
+            <p className='type-ui-caption mt-1 flex items-center gap-1.5'>
+              <MapPin size={13} className='text-brand' />
+              {address}
+            </p>
+          )}
           {caption && <p className='type-ui-caption mt-1'>{caption}</p>}
         </div>
         <div className='ml-auto flex flex-none flex-wrap items-center justify-end gap-2'>
@@ -228,6 +249,8 @@ export default function PropertyCard({
         property={photosOpen ? property : null}
         onClose={() => setPhotosOpen(false)}
       />
+
+      <PropertyMapModal property={mapOpen ? property : null} onClose={() => setMapOpen(false)} />
     </Card>
   );
 }
