@@ -1171,21 +1171,32 @@
 
   /* ==========================================================
      PHOTO CAROUSEL — the stage frames and clips, the viewport inside
-     it carries the gesture, and the zoom cluster rides on the same
-     glass as the map's control panel. Sibling of the viewport rather
-     than a child of it, so a press on a button is never a pan.
+     it stacks the two photo layers and carries the gesture, and the
+     zoom cluster rides on the same glass as the map's control panel.
+     Sibling of the viewport rather than a child of it, so a press on
+     a button is never a pan.
      ========================================================== */
   .pp-photo__viewport {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    position: absolute;
+    inset: 0;
     /* What makes a touch drag pan instead of scroll. It costs native pinch-to-zoom,
        which is the same trade the map makes, and the dialog body does not scroll. */
     touch-action: none;
     user-select: none;
+  }
+  /* Two of these stack, and changing photo swaps which one is opaque, so the new
+     photo comes up through the one before it. Opacity only -- nothing moves, and
+     the index has already changed by the time the fade starts, so paging is never
+     gated on it. Inert to the pointer, which is what keeps the arrows above them
+     clickable and leaves the drag to the viewport underneath. */
+  .pp-photo__layer {
+    position: absolute;
+    inset: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .pp-photo__controls {
     position: absolute;
@@ -1236,6 +1247,67 @@
   .pp-photo__btn:disabled {
     color: var(--action-disabled-text);
     cursor: default;
+  }
+
+  /* The current thumbnail is marked three ways -- a bamboo ring held off the photo by
+     a card-coloured gap, full opacity where the rest sit at 66%, and aria-current --
+     so it never rests on colour alone. Focus replaces the ring with the app's halo
+     rather than stacking a second ring outside it. */
+  .pp-photo__thumb {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-photo);
+    background: var(--surface-photo);
+    overflow: hidden;
+    opacity: 0.66;
+    box-shadow: var(--shadow-hairline);
+    cursor: pointer;
+    transition: var(--transition-control);
+  }
+  .pp-photo__thumb:hover {
+    opacity: 1;
+  }
+  .pp-photo__thumb[aria-current='true'] {
+    opacity: 1;
+    box-shadow:
+      0 0 0 2px var(--surface-card),
+      0 0 0 4px var(--border-brand);
+  }
+  /* Same specificity as the rule above, so source order is what puts focus on top. */
+  .pp-photo__thumb:focus-visible {
+    opacity: 1;
+    border-radius: var(--radius-photo);
+    box-shadow: var(--shadow-focus);
+  }
+
+  /* The error and the empty body are one shape: a round tile carrying a single glyph
+     over a line of centred copy. Only the colour pair, the glyph and the words differ. */
+  .pp-photo__tile {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-sunken);
+    color: var(--text-subtle);
+  }
+  .pp-photo__tile--danger {
+    background: var(--status-danger-bg);
+    color: var(--status-danger-fg);
+  }
+  .pp-photo__note {
+    max-width: 46ch;
+    text-align: center;
+    text-wrap: pretty;
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
   }
 
   /* ==========================================================

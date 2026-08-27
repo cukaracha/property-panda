@@ -98,6 +98,7 @@
   --shadow-card-hover: var(--shadow-card-hover);
   --shadow-popover: var(--shadow-popover);
   --shadow-modal: var(--shadow-modal);
+  --shadow-hairline: var(--shadow-hairline);
 
   /* ---------- Motion ---------- */
   --ease-standard: var(--ease-standard);
