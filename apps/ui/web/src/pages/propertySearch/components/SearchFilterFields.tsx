@@ -6,7 +6,7 @@ import { Input } from '../../../components/ui/input';
 import { DropdownMenu } from '../../../components/inputs/DropdownMenu';
 import FilterChipGroup from './FilterChipGroup';
 import DistrictMapModal from './DistrictMapModal';
-import type { FilterFormState } from '../../../types/listings';
+import type { FilterFormState, PropertyTypeGroup } from '../../../types/listings';
 import type { ResultFacets } from '../utils/resultsFilter';
 import {
   BATHROOM_OPTIONS,
@@ -16,13 +16,14 @@ import {
   FLOOR_LEVEL_OPTIONS,
   formatThousands,
   FURNISHING_OPTIONS,
+  isLandOnly,
   KEYWORD_MAX_LENGTH,
   LAST_POSTED_OPTIONS,
   LISTING_FEATURE_OPTIONS,
   MAX_PAGES_LABEL,
   MAX_PAGES_OPTIONS,
   PROJECT_FEATURE_OPTIONS,
-  PROPERTY_TYPE_OPTIONS,
+  PROPERTY_TYPE_OPTIONS_BY_GROUP,
   stripThousands,
   TENURE_OPTIONS,
   UNIT_FEATURE_OPTIONS,
@@ -30,6 +31,13 @@ import {
 } from '../utils/filterOptions';
 
 export interface SearchFilterFieldsProps {
+  /**
+   * Which property type these filters belong to. It decides which type codes are on
+   * offer and which groups exist at all, exactly as it does on the site: land size is
+   * landed only, floor level is not, and a search for plots of land drops everything
+   * about a building because a plot has no building on it.
+   */
+  group: PropertyTypeGroup;
   form: FilterFormState;
   onChange: (form: FilterFormState) => void;
   /**
@@ -72,6 +80,27 @@ const PRIMARY_RANGE_FIELDS: RangeField[] = [
 
 const MORE_RANGE_FIELDS: RangeField[] = [
   { min: 'minPsf', max: 'maxPsf', label: 'Price per sqft', thousands: true, bounds: 'psf' },
+];
+
+// Land size sits with the primary ranges, since it is the field a landed search is most
+// often run on. `bounds` is unused for it: no search result states a plot's land area,
+// so the results filter never renders this row.
+const LAND_SIZE_FIELD: RangeField = {
+  min: 'minSizeLand',
+  max: 'maxSizeLand',
+  label: 'Land size in sqft',
+  thousands: true,
+  bounds: 'size',
+};
+
+// The groups a search for plots of land does not have, which is what the site itself
+// drops for Land only: a plot has no rooms, no furniture and no facilities.
+const LAND_ONLY_HIDDEN_KEYS: (keyof FilterFormState)[] = [
+  'bedrooms',
+  'bathrooms',
+  'furnishing',
+  'unitFeatures',
+  'projectFeatures',
 ];
 
 // Everything behind the "More filters" toggle, so the button can say how many of them
@@ -131,9 +160,19 @@ function unavailableValues<T extends string | number>(
  * result set are a subset of the filters that produced it, and a subset is far easier to
  * keep honest here than in a second copy of the same chip wiring.
  */
-export default function SearchFilterFields({ form, onChange, facets }: SearchFilterFieldsProps) {
+export default function SearchFilterFields({
+  group,
+  form,
+  onChange,
+  facets,
+}: SearchFilterFieldsProps) {
   const [showMore, setShowMore] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const typeOptions = PROPERTY_TYPE_OPTIONS_BY_GROUP[group];
+  // Everything about a building, dropped for a search that is asking about a plot of
+  // land. The values stay in the form so unpicking Land only brings them back, and
+  // buildSearchRequest leaves them out of the request for as long as this holds.
+  const landOnly = isLandOnly(group, form);
 
   const setField = (key: keyof FilterFormState, value: string) =>
     onChange({ ...form, [key]: value });
@@ -154,7 +193,22 @@ export default function SearchFilterFields({ form, onChange, facets }: SearchFil
       ).map(option => option.value),
     });
 
-  const moreCount = countActive(form, MORE_FILTER_KEYS);
+  // Only what this property type actually shows, since a badge counting a row that is
+  // not on screen sends the user hunting for a filter that is not there.
+  const moreCount = countActive(
+    form,
+    MORE_FILTER_KEYS.filter(key => {
+      if (group === 'L' && key === 'floorLevel') return false;
+      return !landOnly || !LAND_ONLY_HIDDEN_KEYS.includes(key);
+    })
+  );
+
+  // Price, then whatever this property type has to say about size and age. Land size
+  // stands beside floor area, and is the one size a plot of land has.
+  const primaryRanges = PRIMARY_RANGE_FIELDS.flatMap(field => {
+    const rows = landOnly && field.min !== 'minPrice' ? [] : [field];
+    return field.min === 'minSize' && group === 'L' ? [...rows, LAND_SIZE_FIELD] : rows;
+  });
 
   // The separators are a display concern only: the form keeps the raw digits, so a
   // number never reaches the request body wearing a comma.
@@ -206,13 +260,18 @@ export default function SearchFilterFields({ form, onChange, facets }: SearchFil
         </div>
 
         <div className='mt-4 space-y-4'>
-          <FilterChipGroup
-            label='Property type'
-            options={PROPERTY_TYPE_OPTIONS}
-            selected={form.propertyTypeCode}
-            onToggle={value => toggleCode('propertyTypeCode', value)}
-            unavailable={unavailableValues(PROPERTY_TYPE_OPTIONS, facets.propertyTypeCode)}
-          />
+          {/* Not for HDB: the results feed labels every flat "HDB" and never its flat
+              type, so the whole row could only ever sit greyed. The tab above is the
+              narrowing HDB results can answer. */}
+          {group !== 'H' && (
+            <FilterChipGroup
+              label='Property type'
+              options={typeOptions}
+              selected={form.propertyTypeCode}
+              onToggle={value => toggleCode('propertyTypeCode', value)}
+              unavailable={unavailableValues(typeOptions, facets.propertyTypeCode)}
+            />
+          )}
           <FilterChipGroup
             label='Tenure'
             options={TENURE_OPTIONS}
@@ -285,14 +344,12 @@ export default function SearchFilterFields({ form, onChange, facets }: SearchFil
 
   return (
     <>
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
-        {renderRanges(PRIMARY_RANGE_FIELDS)}
-      </div>
+      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>{renderRanges(primaryRanges)}</div>
 
       <div className='mt-4 space-y-4'>
         <FilterChipGroup
           label='Property type'
-          options={PROPERTY_TYPE_OPTIONS}
+          options={typeOptions}
           selected={form.propertyTypeCode}
           onToggle={value => toggleCode('propertyTypeCode', value)}
         />
@@ -316,18 +373,22 @@ export default function SearchFilterFields({ form, onChange, facets }: SearchFil
         <div className='mt-4 space-y-4 border-t border-line pt-4'>
           <div className='grid gap-4 sm:grid-cols-2'>{renderRanges(MORE_RANGE_FIELDS)}</div>
 
-          <FilterChipGroup
-            label='Bedrooms'
-            options={BEDROOM_OPTIONS}
-            selected={form.bedrooms}
-            onToggle={value => toggleCount('bedrooms', value)}
-          />
-          <FilterChipGroup
-            label='Bathrooms'
-            options={BATHROOM_OPTIONS}
-            selected={form.bathrooms}
-            onToggle={value => toggleCount('bathrooms', value)}
-          />
+          {!landOnly && (
+            <FilterChipGroup
+              label='Bedrooms'
+              options={BEDROOM_OPTIONS}
+              selected={form.bedrooms}
+              onToggle={value => toggleCount('bedrooms', value)}
+            />
+          )}
+          {!landOnly && (
+            <FilterChipGroup
+              label='Bathrooms'
+              options={BATHROOM_OPTIONS}
+              selected={form.bathrooms}
+              onToggle={value => toggleCount('bathrooms', value)}
+            />
+          )}
           <FilterChipGroup
             label='Filter by district'
             options={DISTRICT_OPTIONS}
@@ -348,30 +409,40 @@ export default function SearchFilterFields({ form, onChange, facets }: SearchFil
               </span>
             }
           />
-          <FilterChipGroup
-            label='Floor level'
-            options={FLOOR_LEVEL_OPTIONS}
-            selected={form.floorLevel}
-            onToggle={value => toggleCode('floorLevel', value)}
-          />
-          <FilterChipGroup
-            label='Furnishing'
-            options={FURNISHING_OPTIONS}
-            selected={form.furnishing}
-            onToggle={value => toggleCode('furnishing', value)}
-          />
-          <FilterChipGroup
-            label='Unit features'
-            options={UNIT_FEATURE_OPTIONS}
-            selected={form.unitFeatures}
-            onToggle={value => toggleCode('unitFeatures', value)}
-          />
-          <FilterChipGroup
-            label='Facilities'
-            options={PROJECT_FEATURE_OPTIONS}
-            selected={form.projectFeatures}
-            onToggle={value => toggleCode('projectFeatures', value)}
-          />
+          {/* A landed home has no floor to be on, which is why the site drops this row
+              for the whole group rather than for Land only alone. */}
+          {group !== 'L' && (
+            <FilterChipGroup
+              label='Floor level'
+              options={FLOOR_LEVEL_OPTIONS}
+              selected={form.floorLevel}
+              onToggle={value => toggleCode('floorLevel', value)}
+            />
+          )}
+          {!landOnly && (
+            <FilterChipGroup
+              label='Furnishing'
+              options={FURNISHING_OPTIONS}
+              selected={form.furnishing}
+              onToggle={value => toggleCode('furnishing', value)}
+            />
+          )}
+          {!landOnly && (
+            <FilterChipGroup
+              label='Unit features'
+              options={UNIT_FEATURE_OPTIONS}
+              selected={form.unitFeatures}
+              onToggle={value => toggleCode('unitFeatures', value)}
+            />
+          )}
+          {!landOnly && (
+            <FilterChipGroup
+              label='Facilities'
+              options={PROJECT_FEATURE_OPTIONS}
+              selected={form.projectFeatures}
+              onToggle={value => toggleCode('projectFeatures', value)}
+            />
+          )}
           <FilterChipGroup
             label='Listing features'
             options={LISTING_FEATURE_OPTIONS}

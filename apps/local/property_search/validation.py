@@ -9,6 +9,8 @@ who is on the other end of the socket.
 
 import time
 
+from sources.property_guru import PROPERTY_TYPE_CODES_BY_GROUP, PROPERTY_TYPE_GROUPS
+
 KNOWN_SOURCES = ("propertyguru",)
 # The ceiling bounds an explicit page count only. A maxPages of 0 is the "every page"
 # sentinel and deliberately passes through unclamped.
@@ -21,6 +23,8 @@ INT_FILTERS = (
     "maxPrice",
     "minSize",
     "maxSize",
+    "minSizeLand",
+    "maxSizeLand",
     "minTop",
     "maxTop",
     "minPsf",
@@ -43,6 +47,7 @@ FLAG_FILTERS = ("isVerified", "withFloorplans", "withStream")
 RANGE_FILTERS = (
     ("minPrice", "maxPrice"),
     ("minSize", "maxSize"),
+    ("minSizeLand", "maxSizeLand"),
     ("minTop", "maxTop"),
     ("minPsf", "maxPsf"),
 )
@@ -122,8 +127,13 @@ def clean_text(value, field: str, max_chars: int) -> str:
     return text
 
 
-def build_filters(raw: dict) -> dict:
-    """Validate and normalise the caller's filter object."""
+def build_filters(raw: dict, group: str) -> dict:
+    """Validate and normalise one property type group's filter object.
+
+    The group is checked against too, because a property type code belonging to another
+    group returns zero results from the source rather than an error, and "nothing matched"
+    is the one answer a broken filter and an honest one give alike.
+    """
     if not isinstance(raw, dict):
         raise ValueError("filters must be an object")
 
@@ -137,6 +147,11 @@ def build_filters(raw: dict) -> dict:
         values = clean_list(raw.get(field), field)
         if values:
             filters[field] = values
+
+    group_codes = PROPERTY_TYPE_CODES_BY_GROUP.get(group) or ()
+    for code in filters.get("propertyTypeCode") or []:
+        if code not in group_codes:
+            raise ValueError(f"propertyTypeCode {code} does not belong to group {group}")
 
     for field in FLAG_FILTERS:
         if clean_flag(raw.get(field), field):
@@ -172,8 +187,69 @@ def build_filters(raw: dict) -> dict:
     return filters
 
 
+def clean_max_pages(value) -> int:
+    """Bound one group's page budget.
+
+    An absent maxPages is one page, not every page: a caller that says nothing about the
+    size of a scrape should not get the longest one there is.
+    """
+    pages = clean_int(value, "maxPages")
+    if pages is None:
+        return 1
+    return min(pages, MAX_PAGES_CEILING) if pages else pages
+
+
+def build_searches(body: dict) -> list:
+    """Validate the per property type searches a request fans out into.
+
+    One entry per property type group, each with its own page budget and its own complete
+    filter set, because a single query cannot span two groups (see the source module) and
+    because the panel lets each type be filtered on its own terms.
+
+    A body with no `searches` and a flat `filters` is read as one non-landed search, which
+    is what every request and every saved search written before the tabs existed is.
+    """
+    raw = body.get("searches")
+    if raw is None:
+        return [
+            {
+                "propertyTypeGroup": "N",
+                "maxPages": clean_max_pages(body.get("maxPages")),
+                "filters": build_filters(body.get("filters") or {}, "N"),
+            }
+        ]
+
+    if not isinstance(raw, list):
+        raise ValueError("searches must be a list")
+    if not raw:
+        raise ValueError("Pick at least one property type to search")
+
+    searches = []
+    seen = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ValueError("each search must be an object")
+        group = clean_choice(entry.get("propertyTypeGroup"), "", "propertyTypeGroup")
+        if group not in PROPERTY_TYPE_GROUPS:
+            options = ", ".join(PROPERTY_TYPE_GROUPS)
+            raise ValueError(f"propertyTypeGroup must be one of {options}")
+        # Repeats are refused rather than merged: two entries for one group would run the
+        # same query twice and there is no honest way to pick which one's bounds apply.
+        if group in seen:
+            raise ValueError(f"propertyTypeGroup {group} appears more than once")
+        seen.add(group)
+        searches.append(
+            {
+                "propertyTypeGroup": group,
+                "maxPages": clean_max_pages(entry.get("maxPages")),
+                "filters": build_filters(entry.get("filters") or {}, group),
+            }
+        )
+    return searches
+
+
 def build_request(body: dict) -> tuple:
-    """Validate a whole search body, returning (source, maxPages, filters)."""
+    """Validate a whole search body, returning (source, searches)."""
     if not isinstance(body, dict):
         raise ValueError("Request body must be a JSON object")
 
@@ -181,15 +257,7 @@ def build_request(body: dict) -> tuple:
     if source not in KNOWN_SOURCES:
         raise ValueError(f"source must be one of {', '.join(KNOWN_SOURCES)}")
 
-    # An absent maxPages is one page, not every page: a caller that says nothing about
-    # the size of a scrape should not get the longest one there is.
-    pages = clean_int(body.get("maxPages"), "maxPages")
-    if pages is None:
-        pages = 1
-    elif pages:
-        pages = min(pages, MAX_PAGES_CEILING)
-
-    return source, pages, build_filters(body.get("filters") or {})
+    return source, build_searches(body)
 
 
 def clean_entity_id(value) -> str:
@@ -329,7 +397,7 @@ def clean_bookmarked_list(raw) -> list:
 def clean_saved_search(body: dict) -> tuple:
     """Validate a save request.
 
-    Returns (name, source, maxPages, filters, hidden, bookmarked).
+    Returns (name, source, searches, hidden, bookmarked).
 
     The request half goes through build_request, so a saved search is held to exactly
     the same rules as the search it came from and there is no second filter validator
@@ -342,12 +410,11 @@ def clean_saved_search(body: dict) -> tuple:
     if not name:
         raise ValueError("name is required")
 
-    source, pages, filters = build_request(body.get("request") or {})
+    source, searches = build_request(body.get("request") or {})
     return (
         name,
         source,
-        pages,
-        filters,
+        searches,
         clean_hidden_list(body.get("hidden")),
         clean_bookmarked_list(body.get("bookmarked")),
     )

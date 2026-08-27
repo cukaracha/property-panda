@@ -36,24 +36,28 @@ import { createSavedSearch, updateSavedSearch } from '../../services/listingsSer
 import { usePropertySearchResultsStore } from '../../store/usePropertySearchStore';
 import type {
   BookmarkedEntity,
-  FilterFormState,
   HiddenEntity,
   ListingRow,
   PendingHide,
   PendingUnshortlist,
   Property,
+  SearchFormState,
 } from '../../types/listings';
 
 /** The hidden row waiting on an answer, and which list it would come off. */
 type PendingUnhide = { entity: HiddenEntity; isAlways: boolean };
 import {
   buildSearchRequest,
-  DEFAULT_FILTER_FORM,
-  describeFilters,
+  describeSearchForm,
   DISTRICT_NAME_BY_CODE,
 } from './utils/filterOptions';
 import { countUnpositioned, filterByMap, propertyPoint } from './utils/mapFilter';
-import { countResultFilters, filterResults, resultFacets } from './utils/resultsFilter';
+import {
+  countResultFilters,
+  DEFAULT_RESULT_FILTER,
+  filterResults,
+  resultFacets,
+} from './utils/resultsFilter';
 import type { MapViewport } from '../../components/map/DistrictMap';
 import { formatCurrency } from '../../lib/listingsFormat';
 import { cn } from '../../lib/utils';
@@ -134,7 +138,7 @@ export default function PropertySearchResults() {
   // reason. Districts are absent from it: they live in mapSelection above, since the two
   // controls edit one field and a second copy of it would only be a way for them to
   // disagree.
-  const [resultFilter, setResultFilter] = useState(DEFAULT_FILTER_FORM);
+  const [resultFilter, setResultFilter] = useState(DEFAULT_RESULT_FILTER);
   const [mappedResults, setMappedResults] = useState(results);
   const allPropertyCount = results?.properties?.length ?? 0;
 
@@ -146,7 +150,7 @@ export default function PropertySearchResults() {
     setMappedResults(results);
     setMapSelection([]);
     setMapViewport(null);
-    setResultFilter(DEFAULT_FILTER_FORM);
+    setResultFilter(DEFAULT_RESULT_FILTER);
     setIsFilteringResults(false);
   }
 
@@ -267,16 +271,12 @@ export default function PropertySearchResults() {
     [filtered, bookmarkedPropertyIds]
   );
 
-  // The panel edits one form, so the district chips are handed the map's selection and
-  // Apply splits it back out. This is also what the count on the button counts.
-  const filterForm = useMemo(
-    () => ({ ...resultFilter, districtCode: mapSelection }),
-    [resultFilter, mapSelection]
-  );
-  const activeFilterCount = countResultFilters(filterForm);
+  // The map's districts are counted alongside the per type filters, since the button
+  // stands for both of them: a district chosen on the map narrows the same list.
+  const activeFilterCount = countResultFilters(resultFilter, mapSelection, facets.groups);
 
   const clearResultFilter = () => {
-    setResultFilter(DEFAULT_FILTER_FORM);
+    setResultFilter(DEFAULT_RESULT_FILTER);
     setMapSelection([]);
   };
 
@@ -455,7 +455,7 @@ export default function PropertySearchResults() {
   // opens a browser window for results the stored search would not have matched.
   const saveAndRerun = async (
     name: string,
-    edited: FilterFormState,
+    edited: SearchFormState,
     editedHidden: HiddenEntity[],
     editedBookmarked: BookmarkedEntity[]
   ) => {
@@ -504,10 +504,17 @@ export default function PropertySearchResults() {
       phase,
       status: status?.status ?? null,
       errorMessage,
-      filterSummary: searchForm ? describeFilters(searchForm) : '',
+      filterSummary: searchForm ? describeSearchForm(searchForm) : '',
       mapFilterSummary,
+      // Only the types these results actually contain, so the summary describes the
+      // filter that is applied rather than the two tabs that are on but stand for nothing.
       resultFilterSummary:
-        countResultFilters(resultFilter) > 0 ? describeFilters(resultFilter) : '',
+        activeFilterCount > 0
+          ? describeSearchForm({
+              groups: facets.groups.filter(group => resultFilter.groups.includes(group)),
+              forms: resultFilter.forms,
+            })
+          : '',
       savedSearchName,
       newSince,
       properties: visibleProperties,
@@ -779,7 +786,7 @@ export default function PropertySearchResults() {
 
       {isNamingSearch && searchForm && (
         <SaveSearchModal
-          filterSummary={describeFilters(searchForm)}
+          filterSummary={describeSearchForm(searchForm)}
           isSaving={isSavingSearch}
           onClose={() => setIsNamingSearch(false)}
           onSave={saveSearch}
@@ -790,12 +797,13 @@ export default function PropertySearchResults() {
           the filter that is actually applied rather than a draft left behind. */}
       {isFilteringResults && (
         <ResultsFilterModal
-          form={filterForm}
+          form={resultFilter}
+          districts={mapSelection}
           facets={facets}
           onClose={() => setIsFilteringResults(false)}
-          onApply={next => {
-            setMapSelection(next.districtCode);
-            setResultFilter({ ...next, districtCode: [] });
+          onApply={(next, districts) => {
+            setMapSelection(districts);
+            setResultFilter(next);
             setIsFilteringResults(false);
           }}
         />

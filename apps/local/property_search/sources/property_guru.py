@@ -37,10 +37,45 @@ Search results page
                                    fetch a search page already gets.
         [].segment.parameters.metaData.listingData
                                 -> district, districtName, regionName, tenure, projectId,
-                                   propertyType, property{developerName}, adProduct
+                                   propertyType, propertyTypeGroup, property{developerName},
+                                   adProduct
       props.pageProps.pageData.data.paginationData.totalPages -- lets the worker stop early
+      props.pageProps.pageData.data.searchFilterData.filters / .filterValues -- the site's
+                                   own catalogue of filter inputs and the values each one
+                                   accepts, which is where every code in this module and in
+                                   the SPA's filter panel was read from.
     Note `listingData.developer` holds the *agent's* name, not the developer. The real
     developer is property.developerName on the segment metadata. Do not swap these.
+
+Property type groups
+    `propertyTypeGroup` partitions the 45 `propertyTypeCode` values into N (non-landed),
+    H (HDB) and L (landed); an empty group is "all". PROPERTY_TYPE_CODES_BY_GROUP below is
+    that partition, read off `filterValues` where every code carries its parent group.
+
+    ONE QUERY CANNOT SPAN TWO GROUPS, which is why a multi-type search fans out into one
+    query per group rather than one query listing every code. Measured against the live
+    site, since a filter it does not recognise is dropped in silence and the result then
+    reads as a very broad search rather than as a bug:
+      propertyTypeGroup=N / =H / =L        -> 1,661 / 731 / 455 pages
+      no group at all                      -> 2,846 pages
+      propertyTypeGroup=N&propertyTypeGroup=H
+                                           -> 2,846 pages, identical to no group. The
+                                              repeat is ignored, so this does NOT union.
+      propertyTypeGroup=N&propertyTypeCode=4A
+                                           -> 0 results. The group gates the codes.
+      propertyTypeCode=CONDO&propertyTypeCode=4A&propertyTypeCode=SEMI
+                                           -> HDB only. Mixed codes collapse to one group.
+
+    `minSizeLand`/`maxSizeLand` are the landed-only Land Size inputs, and they filter for
+    real (455 pages down to 128 at minSizeLand=5000). The site hides Floor Level for group
+    L, and hides bedrooms, bathrooms, floor size, build year, unit features, facilities and
+    furnishing for code RLAND (Land Only).
+
+    `minTopYear`/`maxTopYear` are honoured for every group, HDB and landed included (455
+    pages down to 127 at 2015 for L, 731 down to 116 for H). Landed *project pages* still
+    render "Completion Year: N/A", so the year is filterable at the source and unknowable
+    afterwards. See `scraper.keep_matching_properties`, which is why it no longer drops a
+    property whose TOP year never came through.
 
 Project page (https://www.propertyguru.com.sg/project/{slug}-{projectId})
     A different, newer app: no `__NEXT_DATA__`. The property facts sit in a microdata
@@ -88,6 +123,59 @@ from urllib.parse import urlencode
 
 BASE_URL = "https://www.propertyguru.com.sg"
 
+# PropertyGuru's own property type catalogue, keyed by the group each code belongs to.
+# Read from `searchFilterData.filterValues`, where every code carries its parent group.
+# A code sent under the wrong group returns zero results rather than an error, so
+# validation.py checks each search's codes against its group before the URL is built.
+PROPERTY_TYPE_CODES_BY_GROUP = {
+    "N": ("CONDO", "APT", "WALK", "CLUS", "EXCON"),
+    "H": (
+        "1R",
+        "2A",
+        "2I",
+        "2S",
+        "2RF",
+        "3A",
+        "3NG",
+        "3Am",
+        "3NGm",
+        "3I",
+        "3Im",
+        "3S",
+        "3STD",
+        "3PA",
+        "4A",
+        "4NG",
+        "4PA",
+        "4I",
+        "4S",
+        "4STD",
+        "5A",
+        "5I",
+        "5PA",
+        "5S",
+        "6J",
+        "EA",
+        "EM",
+        "MG",
+        "TE",
+    ),
+    "L": (
+        "TERRA",
+        "DETAC",
+        "SEMI",
+        "CORN",
+        "LBUNG",
+        "BUNG",
+        "SHOPH",
+        "RLAND",
+        "TOWN",
+        "CON",
+        "LCLUS",
+    ),
+}
+PROPERTY_TYPE_GROUPS = tuple(PROPERTY_TYPE_CODES_BY_GROUP)
+
 # Search filter keys are camelCase now (the prototype's beds[0]/maxprice/mintop form is
 # the legacy one). Repeatable keys are emitted once per value, doseq-style.
 #
@@ -114,6 +202,9 @@ _SCALAR_PARAMS = {
     "maxPrice": "maxPrice",
     "minSize": "minSize",
     "maxSize": "maxSize",
+    # Land Size, which the site offers for landed homes alone.
+    "minSizeLand": "minSizeLand",
+    "maxSizeLand": "maxSizeLand",
     "minTop": "minTopYear",
     "maxTop": "maxTopYear",
     "minPsf": "minPricePerArea",
@@ -201,9 +292,16 @@ class PropertyGuruSource:
 
     # ---------------------------------------------------------------- search
 
-    def build_search_url(self, filters: dict, page: int) -> str:
-        """Build one search-results page URL from the normalised filter dict."""
-        params = [("propertyTypeGroup", "N"), ("page", str(page))]
+    def build_search_url(self, group: str, filters: dict, page: int) -> str:
+        """Build one search-results page URL for one property type group.
+
+        The group is a parameter rather than a filter because it is the one axis a single
+        query cannot span: see the module docstring. A search covering several groups is
+        several of these URLs, and the codes of any other group are left out here so a
+        stray one cannot turn a real search into an empty one.
+        """
+        params = [("propertyTypeGroup", group), ("page", str(page))]
+        group_codes = set(PROPERTY_TYPE_CODES_BY_GROUP.get(group) or ())
 
         for key, param in _SCALAR_PARAMS.items():
             value = filters.get(key)
@@ -212,6 +310,8 @@ class PropertyGuruSource:
 
         for key, param in _LIST_PARAMS.items():
             for value in filters.get(key) or []:
+                if key == "propertyTypeCode" and str(value) not in group_codes:
+                    continue
                 params.append((param, str(value)))
 
         for key, param in _FLAG_PARAMS.items():
@@ -357,6 +457,9 @@ class PropertyGuruSource:
             "regionName": meta.get("regionName") or "",
             "tenureCode": meta.get("tenure") or "",
             "propertyType": meta.get("propertyType") or "",
+            # Which of N / H / L this listing is, so a multi-group search can measure each
+            # listing against the filters of the group it actually came from.
+            "propertyTypeGroup": meta.get("propertyTypeGroup") or "",
             "developer": (meta.get("property") or {}).get("developerName") or "",
         }
 

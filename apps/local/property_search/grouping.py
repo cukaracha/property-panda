@@ -82,7 +82,7 @@ def _build_property(property_id: str, listings: list, enrichment: dict) -> dict:
 
     return {
         "propertyId": property_id,
-        "name": first.get("name") or "Unknown property",
+        "name": _property_name(property_id, first),
         "priceMin": min(prices) if prices else 0,
         "unitCount": len(listings),
         "info": {
@@ -104,6 +104,9 @@ def _build_property(property_id: str, listings: list, enrichment: dict) -> dict:
             "tenure": enrichment.get("tenure") or _tenure_label(first.get("tenureCode")),
             "developer": enrichment.get("developer") or first.get("developer") or "",
             "propertyType": enrichment.get("propertyType") or first.get("propertyType") or "",
+            # Which of the source's property type groups this is, so the results screen can
+            # narrow each type by the bounds its own tab was searched with.
+            "propertyTypeGroup": first.get("propertyTypeGroup") or "",
             "psfRange": enrichment.get("psfRange") or "",
             "projectUrl": enrichment.get("projectUrl") or "",
             "imageUrl": enrichment.get("imageUrl") or "",
@@ -115,7 +118,10 @@ def _build_property(property_id: str, listings: list, enrichment: dict) -> dict:
             # whole rather than coming back through here.
             "photos": [],
             "photoCount": len(enrichment.get("photos") or []),
-            "enrichment": "ok" if enrichment.get("topYear") else "unavailable",
+            # Keyed on the project page having been read at all, not on any one field it
+            # might have carried. Landed project pages state "Completion Year: N/A", so a
+            # flag keyed on the year reported every one of them as a failed fetch.
+            "enrichment": "ok" if enrichment else "unavailable",
         },
         "unitTypes": unit_types,
     }
@@ -223,9 +229,26 @@ def _tenure_label(code: str) -> str:
 
 
 def _fallback_id(listing: dict) -> str:
-    """Group by slugified name when the feed omitted a project id."""
-    name = (listing.get("name") or "unknown").lower()
-    return "name:" + "-".join(part for part in name.split() if part)
+    """Stand one listing alone when the feed named no project it belongs to.
+
+    Landed homes are most of these: only a few of them sit in a named development at all,
+    and the rest carry nothing but the agent's own title. Keying on that title merged
+    unrelated listings whenever two agents reached for the same words, which on ad copy
+    happens often, so each such listing gets a card to itself instead.
+    """
+    return f"listing:{listing.get('listingId')}"
+
+
+def _property_name(property_id: str, listing: dict) -> str:
+    """Name one property card, preferring the address for a listing that stands alone.
+
+    A card built from a project has the project's name. A card that is one listing has
+    only what the agent typed, which is ad copy rather than a name, so the address goes
+    first and the title is the last resort for the listings that carry no address either.
+    """
+    if property_id.startswith("listing:"):
+        return listing.get("address") or listing.get("name") or "Unknown property"
+    return listing.get("name") or "Unknown property"
 
 
 def count_units(properties: list) -> int:

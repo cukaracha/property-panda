@@ -14,11 +14,11 @@ import {
 } from '../../store/usePropertySearchStore';
 import type {
   BookmarkedEntity,
-  FilterFormState,
   HiddenEntity,
   SavedSearch,
+  SearchFormState,
 } from '../../types/listings';
-import { buildSearchRequest, describeFilters, toFilterForm } from './utils/filterOptions';
+import { buildSearchRequest, describeSearchForm, toSearchForm } from './utils/filterOptions';
 
 /**
  * Property search - the filters, and the searches kept from earlier.
@@ -64,7 +64,7 @@ export default function PropertySearch() {
   // showing, hides what that search was already hiding and pins what it already pinned.
   const runSavedSearch = async (saved: SavedSearch) => {
     setRunningSearchId(saved.searchId);
-    const savedForm = toFilterForm(saved);
+    const savedForm = toSearchForm(saved);
     const jobId = await startSearch(buildSearchRequest(savedForm), saved.searchId);
     setRunningSearchId(null);
     if (!jobId) return;
@@ -86,7 +86,7 @@ export default function PropertySearch() {
 
   const saveEdit = async (
     name: string,
-    edited: FilterFormState,
+    edited: SearchFormState,
     hidden: HiddenEntity[],
     bookmarked: BookmarkedEntity[]
   ) => {
@@ -104,7 +104,7 @@ export default function PropertySearch() {
   };
 
   useSearchPageContext(
-    { errorMessage: error, filterSummary: describeFilters(form), savedSearches },
+    { errorMessage: error, filterSummary: describeSearchForm(form), savedSearches },
     {
       onRunSearch: runSearch,
       onRunSavedSearch: runSavedSearchById,
@@ -147,7 +147,7 @@ export default function PropertySearch() {
       {editing && (
         <EditSearchModal
           name={editing.name}
-          form={toFilterForm(editing)}
+          form={toSearchForm(editing)}
           hidden={editing.hidden}
           bookmarked={editing.bookmarked}
           confirmLabel='Save'

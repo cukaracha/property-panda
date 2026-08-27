@@ -122,7 +122,7 @@ var next = 0;
 function pump() {
     if (next >= targets.length) { return; }
     var target = targets[next++];
-    var key = target[0];
+    var slot = target[0];
     // Nothing else bounds a fetch: it has no timeout of its own, and one request left
     // hanging would hold its lane for the rest of the batch.
     var stop = new AbortController();
@@ -132,11 +132,11 @@ function pump() {
             return response.text().then(function (text) {
                 var html = '';
                 try { html = reduce(text) || ''; } catch (e) { html = ''; }
-                return {key: key, status: response.status, html: html, reason: ''};
+                return {slot: slot, status: response.status, html: html, reason: ''};
             });
         })
         .catch(function (e) {
-            return {key: key, status: 0, html: '', reason: String(e)};
+            return {slot: slot, status: 0, html: '', reason: String(e)};
         })
         .then(function (record) {
             clearTimeout(timer);
@@ -245,7 +245,8 @@ class BrowserSession:
                    concurrency: int = 1, extract_js: str = "") -> dict:
         """Fetch many URLs from inside the anchor tab, returning {key: html} for the good ones.
 
-        `targets` is a list of (key, url). A URL that never came good is simply absent
+        `targets` is a list of (key, url), where the key is anything hashable and is what
+        the result comes back under. A URL that never came good is simply absent
         from the result rather than raising, because every batch caller here treats
         enrichment as best effort and one dead project page must not fail a whole job.
 
@@ -334,13 +335,20 @@ class BrowserSession:
         Returns the jobs that never came back, for the caller to retry. A batch ends when
         the pool says it has finished, when the document it was running in went away, or
         when it has been quiet long enough that it is not going to finish.
+
+        What goes into the browser to identify a fetch is its slot in this batch, never
+        the caller's own key. Everything crossing that boundary is JSON, so a key that is
+        not a JSON scalar comes back as something else: a tuple leaves as an array and
+        returns as a list, which is not even hashable. The slot is a string this method
+        makes up and only this method reads, which is what lets `fetch_many` accept any
+        key the caller finds natural.
         """
-        outstanding = {job["key"]: job for job in batch}
+        outstanding = {str(slot): job for slot, job in enumerate(batch)}
         try:
             self._anchor_at(batch[0]["url"])
             self._driver.execute_script(
                 _START_JS.replace("__EXTRACT_BODY__", extract_js or "return text;"),
-                [[job["key"], job["url"]] for job in batch],
+                [[slot, job["url"]] for slot, job in outstanding.items()],
                 lanes,
                 int(PAGE_LOAD_TIMEOUT_SECONDS * 1000),
             )
@@ -361,7 +369,7 @@ class BrowserSession:
                 break
 
             for record in drained.get("batch") or []:
-                job = outstanding.pop(record.get("key"), None)
+                job = outstanding.pop(record.get("slot"), None)
                 if job is not None:
                     landed(job, record)
 

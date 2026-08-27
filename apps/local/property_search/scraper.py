@@ -5,16 +5,24 @@ For each job it walks the source's search result pages in one browser session, e
 each distinct property from its project page (cached), groups everything into the shape
 the UI renders, and records the result and the terminal status on the job row.
 
+A job is one search per property type group, since a single query cannot span two of them
+(see `sources/property_guru.py`). They are not sequential scrapes: every group's pages go
+into the same batches as every other group's, so the whole search still runs inside the
+one browser session the Chrome profile lock allows. Each group carries its own filters and
+its own page budget, which is the point of the fan-out rather than a consequence of it.
+
 Both phases hand their URLs to the session in one batch, so it can have several of them
 in flight at once, and each says how many that should be: search pages are heavier on the
 site than project pages are. Enrichment is where the concurrency matters most, since it
 is one request per distinct property and dominates a cold run, while the search itself is
 only ever a handful of pages.
 
-Both phases end in a filter check. The source's query is what does the real filtering, so
-this only catches what came back contradicting it -- a bound the site quietly ignored, or
-a card that was never a search hit in the first place. Silently keeping those reads as a
-broad search rather than as a bug, which is why the check is here at all.
+Both phases end in a filter check, and each record is checked against the filters of the
+group it came from rather than against some merged set. The source's query is what does
+the real filtering, so this only catches what came back contradicting it -- a bound the
+site quietly ignored, or a card that was never a search hit in the first place. Silently
+keeping those reads as a broad search rather than as a bug, which is why the check is here
+at all.
 
 Status moves queued -> scraping -> enriching -> succeeded, or -> failed.
 
@@ -54,98 +62,151 @@ def get_source(name: str):
     return source_class()
 
 
-def scrape_search_pages(session, source, filters, max_pages, on_progress=None):
-    """Walk the search result pages in one browser session, deduplicating as we go.
+def scrape_search_pages(session, source, searches, on_progress=None):
+    """Walk every group's search result pages in one browser session, deduplicating as we go.
 
-    Page 1 goes on its own because its payload is what says how many pages the search
-    actually has; the rest are handed over as one batch and fetched together. That is
-    also why `on_progress` cannot report a total until page 1 has landed.
+    Two batches rather than one. Every group's page 1 goes into the first, because its
+    payload is what says how many pages that group's search actually has, and everything
+    those totals turn out to allow goes into the second. Groups do not take turns: one
+    batch holds them all, so three groups cost the wall clock of one. That is also why
+    `on_progress` cannot report a total until the first batch has landed.
 
-    A `max_pages` of 0 means every page the search has, which is only knowable from
-    page 1, so an unlimited run is bounded by what page 1 reports rather than upfront.
+    A group's `maxPages` of 0 means every page its search has, which is only knowable from
+    its page 1, so an unlimited run is bounded by what page 1 reports rather than upfront.
     """
     report = on_progress or (lambda done, total: None)
-    first_url = source.build_search_url(filters, 1)
-    html = session.fetch_html(
-        first_url, must_contain="__NEXT_DATA__", extract_js=source.search_extract_js()
-    )
-    total_pages = source.total_pages(html)
+    extract_js = source.search_extract_js()
+    groups = [search["propertyTypeGroup"] for search in searches]
+    filters_by_group = {search["propertyTypeGroup"]: search["filters"] for search in searches}
 
-    first = source.parse_listings(html)
-    print(f"Page 1: {len(first)} listings")
-    if not first and total_pages:
-        # The page came back (fetch_html asserts the data marker) but yielded nothing.
-        # On page 1 with pages available upstream, that means the payload shape moved
-        # under us, not that the search is empty. Failing here is deliberate: the
-        # alternative reports "no properties matched" for a broken parser, which looks
-        # identical to a genuinely empty search.
-        raise RuntimeError(
-            "parsed 0 listings from a rendered page 1 while the site reports "
-            f"{total_pages} page(s) of results, the payload shape has likely changed"
-        )
+    first_pages = session.fetch_many(
+        [(group, source.build_search_url(group, filters_by_group[group], 1)) for group in groups],
+        must_contain="__NEXT_DATA__",
+        concurrency=browser.SCRAPE_SEARCH_CONCURRENCY,
+        extract_js=extract_js,
+    )
 
     listings = []
     seen = set()
-    _collect(first, listings, seen)
-    pages_scanned = 1
+    last_page_by_group = {}
+    total_by_group = {}
+    pages_scanned = 0
 
-    if not max_pages:
-        # Unlimited, so the site's own total is the bound. A total the parser could not
-        # read leaves nothing to scan towards, and stopping at the page already fetched
-        # is the safe way to be wrong.
-        last_page = total_pages or 1
-    else:
-        last_page = min(max_pages, total_pages) if total_pages else max_pages
-    report(1, last_page)
-    rest = [(page, source.build_search_url(filters, page)) for page in range(2, last_page + 1)]
+    for search in searches:
+        group = search["propertyTypeGroup"]
+        html = first_pages.get(group)
+        if not html:
+            # Page 1 is the one page a group cannot do without: it carries the first
+            # results and the page count the rest of the walk is bounded by.
+            raise RuntimeError(f"{group}: search page 1 never returned any content")
+
+        total_pages = source.total_pages(html)
+        first = source.parse_listings(html)
+        print(f"{group} page 1: {len(first)} listings")
+        if not first and total_pages:
+            # The page came back (fetch_many asserts the data marker) but yielded nothing.
+            # On page 1 with pages available upstream, that means the payload shape moved
+            # under us, not that the search is empty. Failing here is deliberate: the
+            # alternative reports "no properties matched" for a broken parser, which looks
+            # identical to a genuinely empty search.
+            raise RuntimeError(
+                f"{group}: parsed 0 listings from a rendered page 1 while the site reports "
+                f"{total_pages} page(s) of results, the payload shape has likely changed"
+            )
+
+        _collect(first, listings, seen, group)
+        pages_scanned += 1
+
+        max_pages = int(search.get("maxPages") or 0)
+        if not max_pages:
+            # Unlimited, so the site's own total is the bound. A total the parser could
+            # not read leaves nothing to scan towards, and stopping at the page already
+            # fetched is the safe way to be wrong.
+            last_page = total_pages or 1
+        else:
+            last_page = min(max_pages, total_pages) if total_pages else max_pages
+        last_page_by_group[group] = last_page
+        total_by_group[group] = total_pages
+
+    # Summed across groups, so the readout counts the whole scrape rather than whichever
+    # group happens to be reporting.
+    pages_total = sum(last_page_by_group.values())
+    report(pages_scanned, pages_total)
+
+    rest = [
+        ((group, page), source.build_search_url(group, filters_by_group[group], page))
+        for group in groups
+        for page in range(2, last_page_by_group[group] + 1)
+    ]
     if rest:
+        done_before = pages_scanned
         fetched = session.fetch_many(
             rest,
             must_contain="__NEXT_DATA__",
-            on_progress=lambda done, total: report(1 + done, last_page),
+            on_progress=lambda done, total: report(done_before + done, pages_total),
             concurrency=browser.SCRAPE_SEARCH_CONCURRENCY,
-            extract_js=source.search_extract_js(),
+            extract_js=extract_js,
         )
-        for page, _ in rest:
-            page_html = fetched.get(page)
+        for key, _ in rest:
+            page_html = fetched.get(key)
             if not page_html:
                 continue
+            group, page = key
             page_listings = source.parse_listings(page_html)
-            print(f"Page {page}: {len(page_listings)} listings")
-            _collect(page_listings, listings, seen)
+            print(f"{group} page {page}: {len(page_listings)} listings")
+            _collect(page_listings, listings, seen, group)
             pages_scanned += 1
 
     # The cap bit before the result set was exhausted, so the user is seeing a capped
-    # view. Never report a capped scrape as a complete one.
-    truncated = bool(total_pages and total_pages > last_page)
-    return listings, pages_scanned, total_pages or 0, truncated
+    # view. Never report a capped scrape as a complete one, and one group hitting its cap
+    # is enough: the consolidated result set is short either way.
+    truncated = any(
+        total_by_group[group] and total_by_group[group] > last_page_by_group[group]
+        for group in groups
+    )
+    return listings, pages_scanned, sum(total_by_group.values()), truncated
 
 
-def _collect(page_listings, listings, seen):
+def _collect(page_listings, listings, seen, group):
     """Add one page's listings to the run, skipping ids already taken.
 
-    Deduplicating across ALL pages, not per page. A listing can repeat across page
-    boundaries when the underlying result set shifts between requests.
+    Deduplicating across ALL pages and ALL groups, not per page. A listing can repeat
+    across page boundaries when the underlying result set shifts between requests.
+
+    The group that fetched the page is stamped on any listing whose card did not name one,
+    because every later check reads a listing's group to decide which filters it answers
+    to, and the query it came from is the one fact about that which cannot be wrong.
     """
     for listing in page_listings:
         listing_id = listing.get("listingId")
         if listing_id and listing_id not in seen:
             seen.add(listing_id)
+            listing["propertyTypeGroup"] = listing.get("propertyTypeGroup") or group
             listings.append(listing)
 
 
-def keep_matching_listings(listings: list, filters: dict) -> list:
-    """Drop the listings that contradict the filters the search was run with.
+def keep_matching_listings(listings: list, searches: list) -> list:
+    """Drop the listings that contradict the filters their own group was searched with.
 
     The site's own query does the real filtering; this only re-checks it. A filter the
     site does not recognise is dropped in silence, and the result then reads as a very
     broad search rather than as a bug -- which is the failure this catches.
 
+    Each listing answers to its own group's filters and to no others, which is the whole
+    reason a group carries a filter set of its own: measuring a landed home against the
+    floor area someone set for condos is exactly the bug the tabs exist to avoid.
+
     Only the filters that can be checked exactly are here. Bedrooms and bathrooms are
     not: the panel's top option means "or more", so an exact match would drop legitimate
-    hits. Neither is lastPosted, whose day boundary is the site's to define, not ours.
+    hits. Neither is lastPosted, whose day boundary is the site's to define, not ours,
+    nor land size, which no search result card states.
     """
-    kept = [listing for listing in listings if _listing_matches(listing, filters)]
+    by_group = {search["propertyTypeGroup"]: search["filters"] for search in searches}
+    kept = [
+        listing
+        for listing in listings
+        if _listing_matches(listing, by_group.get(listing.get("propertyTypeGroup")) or {})
+    ]
     dropped = len(listings) - len(kept)
     if dropped:
         print(f"Filter check dropped {dropped} of {len(listings)} listings")
@@ -190,23 +251,32 @@ def store_listing_photos(listings: list):
     store.put_listing_photos(photos_by_listing)
 
 
-def keep_matching_properties(properties: list, filters: dict) -> list:
-    """Drop the properties whose TOP year falls outside the search's TOP range.
+def keep_matching_properties(properties: list, searches: list) -> list:
+    """Drop the properties whose TOP year falls outside their own group's TOP range.
 
     Property level rather than listing level because TOP is a fact about the project, and
-    it only exists once enrichment has read the project page. A property whose page would
-    not load has no TOP year at all, and it goes too: under a TOP filter, "we could not
-    tell" is not a match.
+    it only exists once enrichment has read the project page.
+
+    A property whose TOP year never came through is kept, which is the same rule
+    `_listing_matches` applies to every other bound: an absent value contradicts nothing.
+    The source has already filtered on the year for us, HDB and landed included, and
+    landed project pages simply never print it, so dropping the unknowns here would empty
+    the landed half of any search with a build year set. It also lets a condo whose
+    project page would not load survive a build year filter, which is the same trade made
+    deliberately rather than a side effect.
     """
-    low, high = filters.get("minTop"), filters.get("maxTop")
-    if low is None and high is None:
+    by_group = {search["propertyTypeGroup"]: search["filters"] for search in searches}
+    if all(
+        filters.get("minTop") is None and filters.get("maxTop") is None
+        for filters in by_group.values()
+    ):
         return properties
 
-    kept = [
-        prop
-        for prop in properties
-        if _in_range(prop["info"].get("topYear"), low, high)
-    ]
+    kept = []
+    for prop in properties:
+        filters = by_group.get(prop["info"].get("propertyTypeGroup")) or {}
+        if _in_range(prop["info"].get("topYear"), filters.get("minTop"), filters.get("maxTop")):
+            kept.append(prop)
     dropped = len(properties) - len(kept)
     if dropped:
         print(f"TOP year check dropped {dropped} of {len(properties)} properties")
@@ -214,9 +284,9 @@ def keep_matching_properties(properties: list, filters: dict) -> list:
 
 
 def _in_range(value, low, high) -> bool:
-    """True when value sits inside the bounds that are set. An unknown value never does."""
+    """True when value sits inside the bounds that are set, or is not stated at all."""
     if value is None:
-        return False
+        return True
     return (low is None or value >= low) and (high is None or value <= high)
 
 
@@ -280,9 +350,16 @@ def enrich_properties(session, source, listings, on_progress=None):
 def run_job(job: dict) -> dict:
     """Scrape, enrich and group one job, returning the result payload."""
     source = get_source(job.get("source"))
-    filters = job.get("filters") or {}
-    requested_pages = int(job.get("maxPages") or 0)
-    max_pages = min(requested_pages, MAX_PAGES_CEILING) if requested_pages else 0
+    searches = [
+        {
+            "propertyTypeGroup": search["propertyTypeGroup"],
+            "maxPages": min(int(search.get("maxPages") or 0), MAX_PAGES_CEILING)
+            if search.get("maxPages")
+            else 0,
+            "filters": search.get("filters") or {},
+        }
+        for search in job.get("searches") or []
+    ]
     job_id = job["jobId"]
 
     def notice(message):
@@ -304,11 +381,11 @@ def run_job(job: dict) -> dict:
     with browser.BrowserSession(on_notice=notice) as session:
         store.update_status(job_id, "scraping")
         listings, pages_scanned, total_pages, truncated = scrape_search_pages(
-            session, source, filters, max_pages, on_progress=pages
+            session, source, searches, on_progress=pages
         )
         # Before enrichment, so a listing that never belonged here does not cost a page
         # load on the way out.
-        listings = keep_matching_listings(listings, filters)
+        listings = keep_matching_listings(listings, searches)
         print(f"Scraped {len(listings)} distinct listings over {pages_scanned} page(s)")
 
         store.update_status(job_id, "enriching", listingCount=len(listings))
@@ -316,7 +393,7 @@ def run_job(job: dict) -> dict:
 
     store_listing_photos(listings)
     properties = keep_matching_properties(
-        grouping.group_listings(listings, properties_cache), filters
+        grouping.group_listings(listings, properties_cache), searches
     )
     return {
         "source": source.name,

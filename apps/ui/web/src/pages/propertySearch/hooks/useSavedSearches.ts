@@ -3,7 +3,7 @@
  *
  * A saved search holds the request body rather than the form, so the server stores
  * exactly the shape it validates a live search against and the panel is filled back
- * in through toFilterForm.
+ * in through toSearchForm.
  *
  * Saving cannot be optimistic, because the id comes back from the server with the
  * stored row. Editing is not either, for the same reason: the row on screen is the

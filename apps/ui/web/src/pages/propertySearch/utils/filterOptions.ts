@@ -7,11 +7,22 @@
  * exactly the choices the site accepts. A value the site does not know is not rejected,
  * it is ignored, and the search then comes back unfiltered.
  *
- * Filters the site has but this panel does not: everything that only applies to rentals
- * (lease term, availability, tenancy conditions, room type) and to landed homes (land
- * size), because the scraper searches non-landed homes for sale.
+ * A search is one form per property type group, because one PropertyGuru query cannot
+ * span two groups and because each type is worth filtering on its own terms: 1,000 sqft
+ * is a large flat and a small landed home. buildSearchRequest turns that into the one
+ * request per group the server fans out and consolidates.
+ *
+ * Filters the site has but this panel does not: everything that only applies to rentals,
+ * which is lease term, availability, tenancy conditions and room type.
  */
-import type { FilterFormState, SearchFilters, SearchRequest } from '../../../types/listings';
+import type {
+  FilterFormState,
+  GroupSearch,
+  PropertyTypeGroup,
+  SearchFilters,
+  SearchFormState,
+  SearchRequest,
+} from '../../../types/listings';
 
 export interface FilterOption {
   value: string;
@@ -25,13 +36,97 @@ export interface NumericFilterOption {
   label: string;
 }
 
-export const PROPERTY_TYPE_OPTIONS: FilterOption[] = [
-  { value: 'CONDO', label: 'Condominium' },
-  { value: 'APT', label: 'Apartment' },
-  { value: 'WALK', label: 'Walk-up' },
-  { value: 'CLUS', label: 'Cluster house' },
-  { value: 'EXCON', label: 'Executive condominium' },
-];
+/** The three groups the site partitions its property types into, in tab order. */
+export const PROPERTY_TYPE_GROUPS: PropertyTypeGroup[] = ['N', 'H', 'L'];
+
+export const PROPERTY_TYPE_GROUP_LABELS: Record<PropertyTypeGroup, string> = {
+  N: 'Condo',
+  H: 'HDB',
+  L: 'Landed',
+};
+
+/**
+ * Every property type code the site offers, under the group that owns it.
+ *
+ * A code sent under another group's query comes back with zero results rather than an
+ * error, so the panel only ever offers a group its own codes and the server refuses the
+ * rest. The HDB codes are flat types, which is why there are so many of them.
+ */
+export const PROPERTY_TYPE_OPTIONS_BY_GROUP: Record<PropertyTypeGroup, FilterOption[]> = {
+  N: [
+    { value: 'CONDO', label: 'Condominium' },
+    { value: 'APT', label: 'Apartment' },
+    { value: 'WALK', label: 'Walk-up' },
+    { value: 'CLUS', label: 'Cluster house' },
+    { value: 'EXCON', label: 'Executive condominium' },
+  ],
+  H: [
+    { value: '1R', label: '1 room' },
+    { value: '2A', label: '2A' },
+    { value: '2I', label: '2I' },
+    { value: '2S', label: '2S' },
+    { value: '2RF', label: '2 room flexi' },
+    { value: '3A', label: '3A' },
+    { value: '3NG', label: '3NG' },
+    { value: '3Am', label: '3A modified' },
+    { value: '3NGm', label: '3NG modified' },
+    { value: '3I', label: '3I' },
+    { value: '3Im', label: '3I modified' },
+    { value: '3S', label: '3S' },
+    { value: '3STD', label: '3 standard' },
+    { value: '3PA', label: '3PA' },
+    { value: '4A', label: '4A' },
+    { value: '4NG', label: '4NG' },
+    { value: '4PA', label: '4PA' },
+    { value: '4I', label: '4I' },
+    { value: '4S', label: '4S' },
+    { value: '4STD', label: '4 standard' },
+    { value: '5A', label: '5A' },
+    { value: '5I', label: '5I' },
+    { value: '5PA', label: '5PA' },
+    { value: '5S', label: '5S' },
+    { value: '6J', label: 'Jumbo' },
+    { value: 'EA', label: 'Executive apartment' },
+    { value: 'EM', label: 'Executive maisonette' },
+    { value: 'MG', label: 'Multi generation' },
+    { value: 'TE', label: 'Terrace' },
+  ],
+  L: [
+    { value: 'TERRA', label: 'Terraced house' },
+    { value: 'CORN', label: 'Corner terrace' },
+    { value: 'SEMI', label: 'Semi-detached house' },
+    { value: 'DETAC', label: 'Detached house' },
+    { value: 'BUNG', label: 'Bungalow' },
+    { value: 'LBUNG', label: 'Good class bungalow' },
+    { value: 'TOWN', label: 'Town house' },
+    { value: 'CON', label: 'Conservation house' },
+    { value: 'LCLUS', label: 'Cluster house' },
+    { value: 'SHOPH', label: 'Shophouse' },
+    { value: 'RLAND', label: 'Land only' },
+  ],
+};
+
+/**
+ * Every code across every group, for anything that has a type and wants its name. Not for
+ * a chip row: a group is only ever offered its own codes.
+ */
+export const PROPERTY_TYPE_OPTIONS: FilterOption[] = PROPERTY_TYPE_GROUPS.flatMap(
+  group => PROPERTY_TYPE_OPTIONS_BY_GROUP[group]
+);
+
+/** The group a property type code belongs to, for reading a result back to a tab. */
+export const PROPERTY_TYPE_GROUP_BY_CODE: Record<string, PropertyTypeGroup> = Object.fromEntries(
+  PROPERTY_TYPE_GROUPS.flatMap(group =>
+    PROPERTY_TYPE_OPTIONS_BY_GROUP[group].map(option => [option.value, group])
+  )
+);
+
+/**
+ * The type codes the site hides its unit level filters behind. Land Only is a plot, so
+ * bedrooms, bathrooms, floor area, build year, furnishing, unit features and facilities
+ * are all questions it cannot answer, and PropertyGuru drops them from its own panel.
+ */
+export const LAND_ONLY_CODE = 'RLAND';
 
 export const BEDROOM_OPTIONS: NumericFilterOption[] = [
   { value: 0, label: 'Studio' },
@@ -100,6 +195,8 @@ export const TENURE_OPTIONS: FilterOption[] = [
   { value: 'L110', label: '110-year' },
   { value: 'L999', label: '999-year' },
   { value: 'L9999', label: '9999-year' },
+  // A real value in the site's own list, and a common one on landed homes.
+  { value: 'NA', label: 'Unknown' },
 ];
 
 export const FLOOR_LEVEL_OPTIONS: FilterOption[] = [
@@ -180,6 +277,8 @@ export const DEFAULT_FILTER_FORM: FilterFormState = {
   maxPrice: '',
   minSize: '',
   maxSize: '',
+  minSizeLand: '',
+  maxSizeLand: '',
   minPsf: '',
   maxPsf: '',
   minTop: '',
@@ -199,6 +298,72 @@ export const DEFAULT_FILTER_FORM: FilterFormState = {
   lastPosted: '',
   maxPages: MAX_PAGES_ALL,
 };
+
+/**
+ * A fresh search: condos, on the terms every search used to be run on.
+ *
+ * Every group carries a form whether or not it is switched on, so a tab turned off and
+ * back on comes back with what was typed into it rather than empty.
+ */
+export const DEFAULT_SEARCH_FORM: SearchFormState = {
+  groups: ['N'],
+  forms: { N: DEFAULT_FILTER_FORM, H: DEFAULT_FILTER_FORM, L: DEFAULT_FILTER_FORM },
+};
+
+/** Replace one group's filters, leaving the other groups and the tab selection alone. */
+export function setGroupForm(
+  form: SearchFormState,
+  group: PropertyTypeGroup,
+  next: FilterFormState
+): SearchFormState {
+  return { ...form, forms: { ...form.forms, [group]: next } };
+}
+
+/**
+ * Turn one property type on or off, refusing to turn the last one off.
+ *
+ * A search of nothing is not a narrower search, it is a request the server rejects, and a
+ * results filter of nothing is a blank screen with no way back but Clear. `available`
+ * bounds what "the last one" means, since the results filter offers only the types the
+ * results contain: with landed absent, switching off condo and HDB leaves nothing even
+ * though a landed tab is still nominally on.
+ */
+export function toggleGroup(
+  form: SearchFormState,
+  group: PropertyTypeGroup,
+  available: PropertyTypeGroup[] = PROPERTY_TYPE_GROUPS
+): SearchFormState {
+  if (!form.groups.includes(group)) {
+    return {
+      ...form,
+      groups: PROPERTY_TYPE_GROUPS.filter(g => g === group || form.groups.includes(g)),
+    };
+  }
+  if (isLastGroupOn(form, group, available)) return form;
+  return { ...form, groups: form.groups.filter(g => g !== group) };
+}
+
+/** Whether this is the one property type still standing, and so cannot be turned off. */
+export function isLastGroupOn(
+  form: SearchFormState,
+  group: PropertyTypeGroup,
+  available: PropertyTypeGroup[] = PROPERTY_TYPE_GROUPS
+): boolean {
+  if (!form.groups.includes(group)) return false;
+  return available.filter(g => form.groups.includes(g)).length === 1;
+}
+
+/**
+ * Whether this group's search is for plots of land alone, which the site answers with a
+ * far shorter filter set: a plot has no bedrooms, no floor area and no build year.
+ */
+export function isLandOnly(group: PropertyTypeGroup, form: FilterFormState): boolean {
+  return (
+    group === 'L' &&
+    form.propertyTypeCode.length > 0 &&
+    form.propertyTypeCode.every(code => code === LAND_ONLY_CODE)
+  );
+}
 
 /** Add the value when absent, remove it when present. Used by the chip groups. */
 export function toggleOption<T>(selected: T[], value: T): T[] {
@@ -241,36 +406,60 @@ function toFlag(form: FilterFormState, feature: string): true | undefined {
   return form.listingFeatures.includes(feature) ? true : undefined;
 }
 
-/** Build the POST body, dropping every filter the user left empty. */
-export function buildSearchRequest(form: FilterFormState): SearchRequest {
+/**
+ * Build one group's filters, dropping every one the user left empty.
+ *
+ * The group decides which filters exist at all: land size is landed only, floor level is
+ * hidden for landed, and a search for plots of land carries none of the unit level
+ * filters. Those are left out here as well as hidden in the panel, so a value typed
+ * before a type was chosen cannot ride along invisibly into the search.
+ */
+function buildGroupFilters(group: PropertyTypeGroup, form: FilterFormState): SearchFilters {
+  const landOnly = isLandOnly(group, form);
+  return {
+    minPrice: toNumber(form.minPrice),
+    maxPrice: toNumber(form.maxPrice),
+    bedrooms: landOnly ? undefined : toList(form.bedrooms),
+    bathrooms: landOnly ? undefined : toList(form.bathrooms),
+    minSize: landOnly ? undefined : toNumber(form.minSize),
+    maxSize: landOnly ? undefined : toNumber(form.maxSize),
+    minSizeLand: group === 'L' ? toNumber(form.minSizeLand) : undefined,
+    maxSizeLand: group === 'L' ? toNumber(form.maxSizeLand) : undefined,
+    minPsf: toNumber(form.minPsf),
+    maxPsf: toNumber(form.maxPsf),
+    propertyTypeCode: toList(form.propertyTypeCode),
+    districtCode: toList(form.districtCode),
+    tenureCode: toList(form.tenureCode),
+    floorLevel: group === 'L' ? undefined : toList(form.floorLevel),
+    furnishing: landOnly ? undefined : toList(form.furnishing),
+    unitFeatures: landOnly ? undefined : toList(form.unitFeatures),
+    projectFeatures: landOnly ? undefined : toList(form.projectFeatures),
+    minTop: landOnly ? undefined : toNumber(form.minTop),
+    maxTop: landOnly ? undefined : toNumber(form.maxTop),
+    distanceToMrt: form.distanceToMrt || undefined,
+    keyword: form.keyword.trim() || undefined,
+    isVerified: toFlag(form, 'isVerified'),
+    withFloorplans: toFlag(form, 'withFloorplans'),
+    withStream: toFlag(form, 'withStream'),
+    lastPosted: toNumber(form.lastPosted),
+  };
+}
+
+/**
+ * Build the POST body: one search per property type the form covers.
+ *
+ * They are separate because a single PropertyGuru query cannot span two groups, and each
+ * carries its own page budget for the same reason it carries its own filters. The server
+ * runs them together and consolidates what comes back into one result set.
+ */
+export function buildSearchRequest(form: SearchFormState): SearchRequest {
   return {
     source: 'propertyguru',
-    maxPages: toNumber(form.maxPages) ?? 1,
-    filters: {
-      minPrice: toNumber(form.minPrice),
-      maxPrice: toNumber(form.maxPrice),
-      bedrooms: toList(form.bedrooms),
-      bathrooms: toList(form.bathrooms),
-      minSize: toNumber(form.minSize),
-      maxSize: toNumber(form.maxSize),
-      minPsf: toNumber(form.minPsf),
-      maxPsf: toNumber(form.maxPsf),
-      propertyTypeCode: toList(form.propertyTypeCode),
-      districtCode: toList(form.districtCode),
-      tenureCode: toList(form.tenureCode),
-      floorLevel: toList(form.floorLevel),
-      furnishing: toList(form.furnishing),
-      unitFeatures: toList(form.unitFeatures),
-      projectFeatures: toList(form.projectFeatures),
-      minTop: toNumber(form.minTop),
-      maxTop: toNumber(form.maxTop),
-      distanceToMrt: form.distanceToMrt || undefined,
-      keyword: form.keyword.trim() || undefined,
-      isVerified: toFlag(form, 'isVerified'),
-      withFloorplans: toFlag(form, 'withFloorplans'),
-      withStream: toFlag(form, 'withStream'),
-      lastPosted: toNumber(form.lastPosted),
-    },
+    searches: form.groups.map(group => ({
+      propertyTypeGroup: group,
+      maxPages: toNumber(form.forms[group].maxPages) ?? 1,
+      filters: buildGroupFilters(group, form.forms[group]),
+    })),
   };
 }
 
@@ -285,20 +474,22 @@ function toFeatures(filters: SearchFilters): string[] {
 }
 
 /**
- * Put a request back in the panel, the inverse of buildSearchRequest.
+ * Put one group's filters back in the panel, the inverse of buildGroupFilters.
  *
  * Every field is written rather than merged over the defaults, so a filter the
  * request does not carry is cleared rather than left over from whatever was in the
  * panel before. `sort` and `order` have no field to come back to and are dropped:
  * they are the same on every search the panel builds.
  */
-export function toFilterForm(request: SearchRequest): FilterFormState {
-  const filters = request.filters || {};
+function toFilterForm(search: GroupSearch): FilterFormState {
+  const filters = search.filters || {};
   return {
     minPrice: toText(filters.minPrice),
     maxPrice: toText(filters.maxPrice),
     minSize: toText(filters.minSize),
     maxSize: toText(filters.maxSize),
+    minSizeLand: toText(filters.minSizeLand),
+    maxSizeLand: toText(filters.maxSizeLand),
     minPsf: toText(filters.minPsf),
     maxPsf: toText(filters.maxPsf),
     minTop: toText(filters.minTop),
@@ -316,7 +507,44 @@ export function toFilterForm(request: SearchRequest): FilterFormState {
     distanceToMrt: filters.distanceToMrt ?? '',
     keyword: filters.keyword ?? '',
     lastPosted: toText(filters.lastPosted),
-    maxPages: String(request.maxPages ?? 1),
+    maxPages: String(search.maxPages ?? 1),
+  };
+}
+
+/**
+ * A stored request or saved search read back into the whole panel.
+ *
+ * A row with no `searches` is one carrying a flat maxPages and filters, which is every
+ * request written before the property type tabs existed. It reads as a single non-landed
+ * search, because that is exactly what it was: the scraper hardcoded that group. Nothing
+ * is migrated on disk, and the row is rewritten in the new shape the first time it is
+ * saved again.
+ */
+export function toSearchForm(request: {
+  searches?: GroupSearch[];
+  maxPages?: number;
+  filters?: SearchFilters;
+}): SearchFormState {
+  const searches: GroupSearch[] =
+    request.searches && request.searches.length > 0
+      ? request.searches
+      : [
+          {
+            propertyTypeGroup: 'N',
+            maxPages: request.maxPages ?? 1,
+            filters: request.filters ?? {},
+          },
+        ];
+
+  const forms = { ...DEFAULT_SEARCH_FORM.forms };
+  for (const search of searches) forms[search.propertyTypeGroup] = toFilterForm(search);
+  return {
+    // Canonical tab order rather than the order the request happens to list them in, so
+    // two searches covering the same types always read the same way.
+    groups: PROPERTY_TYPE_GROUPS.filter(group =>
+      searches.some(search => search.propertyTypeGroup === group)
+    ),
+    forms,
   };
 }
 
@@ -329,7 +557,7 @@ function describeCodes<T extends string | number>(
     .join(', ');
 }
 
-/** A short human summary of the active filters, for the agent page context. */
+/** A short human summary of one property type's active filters. */
 export function describeFilters(form: FilterFormState): string {
   const parts: string[] = [];
   if (form.minPrice || form.maxPrice) {
@@ -337,6 +565,9 @@ export function describeFilters(form: FilterFormState): string {
   }
   if (form.minSize || form.maxSize) {
     parts.push(`floor area ${form.minSize || 'any'} to ${form.maxSize || 'any'} sqft`);
+  }
+  if (form.minSizeLand || form.maxSizeLand) {
+    parts.push(`land size ${form.minSizeLand || 'any'} to ${form.maxSizeLand || 'any'} sqft`);
   }
   if (form.minPsf || form.maxPsf) {
     parts.push(`psf ${form.minPsf || 'any'} to ${form.maxPsf || 'any'}`);
@@ -396,4 +627,48 @@ export function describeFilters(form: FilterFormState): string {
   if (form.maxPages !== MAX_PAGES_ALL) parts.push(`${form.maxPages} pages scanned`);
   if (parts.length === 0) return 'no filters set';
   return parts.join(', ');
+}
+
+/**
+ * The whole search described one property type at a time, for the agent page context and
+ * for the modal that names a search before saving it.
+ *
+ * Each type is named even when its filters are empty, because covering HDB with no
+ * filters at all is a real search and a summary that left it out would describe a
+ * different one.
+ */
+export function describeSearchForm(form: SearchFormState): string {
+  return form.groups
+    .map(group => `${PROPERTY_TYPE_GROUP_LABELS[group]} (${describeFilters(form.forms[group])})`)
+    .join(', ');
+}
+
+/**
+ * The same search as one line of a list.
+ *
+ * A search of one type reads out in full, which is what the saved searches list has
+ * always shown. Several types do not: three full descriptions on one row are longer than
+ * the row, so each type is named with a count of what is set under it instead.
+ */
+export function summariseSearchForm(form: SearchFormState): string {
+  if (form.groups.length === 1) {
+    const group = form.groups[0];
+    return `${PROPERTY_TYPE_GROUP_LABELS[group]}, ${describeFilters(form.forms[group])}`;
+  }
+  return form.groups
+    .map(group => {
+      const count = countFilters(form.forms[group]);
+      const label = PROPERTY_TYPE_GROUP_LABELS[group];
+      if (count === 0) return `${label} (no filters)`;
+      return `${label} (${count} ${count === 1 ? 'filter' : 'filters'})`;
+    })
+    .join(', ');
+}
+
+/** How many of one property type's filter groups are set. Excludes the page budget. */
+function countFilters(form: FilterFormState): number {
+  return Object.entries(form).filter(([key, value]) => {
+    if (key === 'maxPages') return false;
+    return Array.isArray(value) ? value.length > 0 : String(value).trim() !== '';
+  }).length;
 }

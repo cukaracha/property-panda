@@ -25,13 +25,17 @@ import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import type {
   BookmarkedEntity,
-  FilterFormState,
   HiddenEntity,
+  SearchFormState,
   SearchResultsResponse,
 } from '../types/listings';
-import { DEFAULT_FILTER_FORM } from '../pages/propertySearch/utils/filterOptions';
+import { DEFAULT_SEARCH_FORM } from '../pages/propertySearch/utils/filterOptions';
 
 const RESULTS_KEY = 'property-search-results';
+// Bumped when the snapshot's shape changed: before the property type tabs it was one flat
+// filter form rather than one per type. There is nothing to carry across, and a sitting
+// left open across the change would otherwise put a shape this page cannot read on screen.
+const RESULTS_VERSION = 2;
 
 /**
  * sessionStorage, with a write that will not fit dropped rather than thrown.
@@ -67,12 +71,12 @@ const safeSessionStorage: StateStorage = {
 };
 
 interface PropertySearchFormStore {
-  form: FilterFormState;
-  setForm: (form: FilterFormState) => void;
+  form: SearchFormState;
+  setForm: (form: SearchFormState) => void;
 }
 
 export const usePropertySearchStore = create<PropertySearchFormStore>(set => ({
-  form: DEFAULT_FILTER_FORM,
+  form: DEFAULT_SEARCH_FORM,
   setForm: form => set({ form }),
 }));
 
@@ -87,7 +91,7 @@ interface PropertySearchResultsStore {
   /** The terminal poll payload of the last successful search, or null when there is none. */
   results: SearchResultsResponse | null;
   /** The filters the running or finished job was started with, or null before any. */
-  searchForm: FilterFormState | null;
+  searchForm: SearchFormState | null;
   /**
    * The saved search these results belong to, or null while the search is one the
    * user has run but not kept. It is what decides whether a hide is written through
@@ -108,7 +112,7 @@ interface PropertySearchResultsStore {
    * baseline the badges need is where it stood before.
    */
   newSince: number | null;
-  startJob: (jobId: string, form: FilterFormState, saved: SavedSearchLink | null) => void;
+  startJob: (jobId: string, form: SearchFormState, saved: SavedSearchLink | null) => void;
   setResults: (results: SearchResultsResponse) => void;
   /**
    * Attach a search that has just been saved, keeping the items it already hides and
@@ -161,6 +165,10 @@ export const usePropertySearchResultsStore = create<PropertySearchResultsStore>(
     }),
     {
       name: RESULTS_KEY,
+      version: RESULTS_VERSION,
+      // Nothing survives the shape change, so a snapshot from before it starts over on
+      // the initial state rather than being repaired into something it never was.
+      migrate: () => ({}) as Partial<PropertySearchResultsStore>,
       storage: createJSONStorage(() => safeSessionStorage),
       partialize: state => ({
         jobId: state.jobId,

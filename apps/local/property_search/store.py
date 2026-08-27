@@ -87,20 +87,24 @@ def _write(path: str, data: dict):
 
 
 def create_job(
-    job_id: str, source: str, max_pages: int, filters: dict, saved_search_id: str = None
+    job_id: str, source: str, searches: list, saved_search_id: str = None
 ) -> dict:
     """Record a queued job and return its row.
 
     savedSearchId is the search this run came from, when it came from one at all, so the
     worker can stamp that search's last run once the scrape has succeeded.
+
+    `searches` is one entry per property type group, each with its own page budget and
+    filters. A row written before the tabs existed carries a flat maxPages and filters
+    instead; those jobs are terminal and only ever read back for their status, so they are
+    left as they were rather than migrated.
     """
     now = int(time.time())
     row = {
         "jobId": job_id,
         "status": "queued",
         "source": source,
-        "maxPages": max_pages,
-        "filters": filters,
+        "searches": searches,
         "savedSearchId": saved_search_id,
         "propertyCount": 0,
         "unitCount": 0,
@@ -336,8 +340,7 @@ def put_saved_search(
     search_id: str,
     name: str,
     source: str,
-    max_pages: int,
-    filters: dict,
+    searches_list: list,
     hidden: list,
     bookmarked: list,
 ) -> dict:
@@ -345,13 +348,17 @@ def put_saved_search(
 
     The cap raises rather than evicting the oldest, because a saved search is something
     the user typed and only the user should decide which one goes.
+
+    A row saved before the property type tabs existed carries a flat maxPages and filters
+    rather than `searches`. Nothing migrates it: the SPA reads that pair as one non-landed
+    search, which is exactly what it was, and rewrites the row in the new shape the first
+    time the search is edited.
     """
     search = {
         "searchId": search_id,
         "name": name,
         "source": source,
-        "maxPages": max_pages,
-        "filters": filters,
+        "searches": searches_list,
         "hidden": hidden,
         "bookmarked": bookmarked,
         "lastRunAt": None,
@@ -373,8 +380,7 @@ def update_saved_search(
     search_id: str,
     name: str,
     source: str,
-    max_pages: int,
-    filters: dict,
+    searches_list: list,
     hidden: list,
     bookmarked: list,
 ) -> dict:
@@ -396,8 +402,7 @@ def update_saved_search(
             {
                 "name": name,
                 "source": source,
-                "maxPages": max_pages,
-                "filters": filters,
+                "searches": searches_list,
                 "hidden": hidden,
                 "bookmarked": bookmarked,
             }

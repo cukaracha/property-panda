@@ -105,13 +105,13 @@ async def create_search(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON in request body")
 
     try:
-        source, max_pages, filters = validation.build_request(body)
+        source, searches = validation.build_request(body)
         saved_search_id = validation.clean_optional_search_id(body.get("savedSearchId"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     job_id = str(uuid.uuid4())
-    job = store.create_job(job_id, source, max_pages, filters, saved_search_id)
+    job = store.create_job(job_id, source, searches, saved_search_id)
     _jobs.submit(scraper.process_job, job)
 
     return {"jobId": job_id, "status": "queued"}
@@ -232,11 +232,9 @@ async def create_saved_search(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON in request body")
 
     try:
-        name, source, max_pages, filters, hidden, bookmarked = validation.clean_saved_search(
-            body
-        )
+        name, source, searches, hidden, bookmarked = validation.clean_saved_search(body)
         return store.put_saved_search(
-            str(uuid.uuid4()), name, source, max_pages, filters, hidden, bookmarked
+            str(uuid.uuid4()), name, source, searches, hidden, bookmarked
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -252,14 +250,12 @@ async def update_saved_search(search_id: str, request: Request):
 
     try:
         validation.clean_search_id(search_id)
-        name, source, max_pages, filters, hidden, bookmarked = validation.clean_saved_search(
-            body
-        )
+        name, source, searches, hidden, bookmarked = validation.clean_saved_search(body)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     search = store.update_saved_search(
-        search_id, name, source, max_pages, filters, hidden, bookmarked
+        search_id, name, source, searches, hidden, bookmarked
     )
     if search is None:
         raise HTTPException(status_code=404, detail="That saved search no longer exists")

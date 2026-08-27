@@ -3,14 +3,20 @@ import { BookmarkX, Eye, Pencil } from 'lucide-react';
 import Modal from '../../../components/modals/Modal';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import PropertyTypeTabs from './PropertyTypeTabs';
 import SearchFilterFields from './SearchFilterFields';
 import { SAVED_SEARCH_NAME_MAX_LENGTH } from './SaveSearchModal';
-import type { BookmarkedEntity, FilterFormState, HiddenEntity } from '../../../types/listings';
-import { buildSearchRequest } from '../utils/filterOptions';
+import type {
+  BookmarkedEntity,
+  HiddenEntity,
+  PropertyTypeGroup,
+  SearchFormState,
+} from '../../../types/listings';
+import { buildSearchRequest, setGroupForm } from '../utils/filterOptions';
 
 export interface EditSearchModalProps {
   name: string;
-  form: FilterFormState;
+  form: SearchFormState;
   hidden: HiddenEntity[];
   bookmarked: BookmarkedEntity[];
   /** "Save and rerun" from the results, "Save" from the saved searches list. */
@@ -19,7 +25,7 @@ export interface EditSearchModalProps {
   onClose: () => void;
   onSave: (
     name: string,
-    form: FilterFormState,
+    form: SearchFormState,
     hidden: HiddenEntity[],
     bookmarked: BookmarkedEntity[]
   ) => void;
@@ -35,7 +41,7 @@ const GROUPS: { scope: HiddenEntity['scope']; title: string }[] = [
  * search. Retyping a field to the value it already had is not a change, and neither is
  * clearing one that was already empty.
  */
-function describeRequest(form: FilterFormState): string {
+function describeRequest(form: SearchFormState): string {
   return JSON.stringify(buildSearchRequest(form));
 }
 
@@ -67,6 +73,7 @@ export default function EditSearchModal({
 }: EditSearchModalProps) {
   const [draftName, setDraftName] = useState(name);
   const [draftForm, setDraftForm] = useState(form);
+  const [active, setActive] = useState<PropertyTypeGroup>(form.groups[0]);
   const [draftHidden, setDraftHidden] = useState(hidden);
   const [draftBookmarked, setDraftBookmarked] = useState(bookmarked);
 
@@ -122,8 +129,18 @@ export default function EditSearchModal({
         />
         {!trimmed && <p className='type-ui-sm mt-2 text-danger'>A search needs a name.</p>}
 
-        <div className='mt-5 border-t border-line pt-4'>
-          <SearchFilterFields form={draftForm} onChange={setDraftForm} />
+        <div className='mt-5 space-y-4 border-t border-line pt-4'>
+          <PropertyTypeTabs
+            form={draftForm}
+            onChange={setDraftForm}
+            active={active}
+            onActiveChange={setActive}
+          />
+          <SearchFilterFields
+            group={active}
+            form={draftForm.forms[active]}
+            onChange={next => setDraftForm(setGroupForm(draftForm, active, next))}
+          />
         </div>
 
         <div className='mt-5 space-y-4 border-t border-line pt-4'>

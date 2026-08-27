@@ -17,7 +17,7 @@ import {
   formatYear,
   STATUS_LABELS,
 } from '../../lib/listingsFormat';
-import { describeFilters, toFilterForm } from './utils/filterOptions';
+import { describeSearchForm, toSearchForm } from './utils/filterOptions';
 import { isNewSince, toListingRows } from '../../lib/listingRows';
 import { formatLastRun } from './utils/lastRun';
 
@@ -159,7 +159,7 @@ function getSearchDetails(view: SearchView): string {
       const hiddenCount = saved.hidden.length;
       const bookmarkedCount = saved.bookmarked.length;
       lines.push(
-        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeFilters(toFilterForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}, bookmarking ${bookmarkedCount} ${bookmarkedCount === 1 ? 'property' : 'properties'}. ${formatLastRun(saved.lastRunAt)}.`
+        `- ${saved.name} (savedSearchId ${saved.searchId}): ${describeSearchForm(toSearchForm(saved))}, hiding ${hiddenCount} ${hiddenCount === 1 ? 'item' : 'items'}, bookmarking ${bookmarkedCount} ${bookmarkedCount === 1 ? 'property' : 'properties'}. ${formatLastRun(saved.lastRunAt)}.`
       );
     }
   }

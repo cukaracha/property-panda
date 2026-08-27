@@ -31,6 +31,13 @@ export interface PropertyInfo {
   tenure: string | null;
   developer: string | null;
   propertyType: string | null;
+  /**
+   * Which of the source's property type groups this property is. Absent on results
+   * scraped before the search covered more than condos, which is why every reader goes
+   * through `propertyGroupOf` rather than trusting the field: those results were all
+   * non-landed, so an absent group reads as 'N'.
+   */
+  propertyTypeGroup?: string;
   psfRange: string | null;
   projectUrl: string | null;
   imageUrl: string | null;
@@ -279,6 +286,9 @@ export interface SearchFilters {
   bathrooms?: number[];
   minSize?: number;
   maxSize?: number;
+  /** Land size, which the source offers for landed homes alone. */
+  minSizeLand?: number;
+  maxSizeLand?: number;
   minPsf?: number;
   maxPsf?: number;
   propertyTypeCode?: string[];
@@ -300,16 +310,31 @@ export interface SearchFilters {
   order?: string;
 }
 
-export interface SearchRequest {
-  source: 'propertyguru';
+/**
+ * The source's own partition of its property types: N non-landed, H HDB, L landed.
+ *
+ * One query cannot span two of them, so a search covering several is several queries the
+ * server fans out and consolidates. Each carries its own filters, because what makes a
+ * landed home worth looking at is not what makes a flat worth looking at.
+ */
+export type PropertyTypeGroup = 'N' | 'H' | 'L';
+
+/** One property type's half of a search: its own page budget and its own filters. */
+export interface GroupSearch {
+  propertyTypeGroup: PropertyTypeGroup;
   maxPages: number;
   filters: SearchFilters;
+}
+
+export interface SearchRequest {
+  source: 'propertyguru';
+  searches: GroupSearch[];
 }
 
 /**
  * One search kept for re-running. It stores the request rather than the form, so the
  * server holds the same shape it validates a live search against, and the panel is
- * repopulated from it through toFilterForm.
+ * repopulated from it through toSearchForm.
  *
  * Hiding is part of the search rather than a list of its own, so re-running a saved
  * search brings back the same properties and units dismissed the last time, and
@@ -319,8 +344,15 @@ export interface SavedSearch {
   searchId: string;
   name: string;
   source: 'propertyguru';
-  maxPages: number;
-  filters: SearchFilters;
+  searches?: GroupSearch[];
+  /**
+   * What a row saved before the property type tabs existed carries instead of `searches`.
+   * Nothing migrates it: `toSearchForm` reads the pair as one non-landed search, which is
+   * exactly what it was, and the row is rewritten in the new shape the first time it is
+   * edited.
+   */
+  maxPages?: number;
+  filters?: SearchFilters;
   hidden: HiddenEntity[];
   bookmarked: BookmarkedEntity[];
   /**
@@ -343,12 +375,16 @@ export interface ListSavedSearchesResponse {
  * `listingFeatures` is one chip group in the panel but three separate flags on the
  * request, because that is how PropertyGuru models it: it groups them under "Listing
  * Features" and still sends isVerified / withFloorplans / withStream individually.
+ *
+ * This is one property type's worth. A whole search is a SearchFormState below.
  */
 export interface FilterFormState {
   minPrice: string;
   maxPrice: string;
   minSize: string;
   maxSize: string;
+  minSizeLand: string;
+  maxSizeLand: string;
   minPsf: string;
   maxPsf: string;
   minTop: string;
@@ -368,4 +404,17 @@ export interface FilterFormState {
   lastPosted: string;
   /** "0" means every page the search has. See MAX_PAGES_OPTIONS. */
   maxPages: string;
+}
+
+/**
+ * The whole search form: which property types it covers, and one complete filter set per
+ * type.
+ *
+ * Every group keeps a form whether or not it is switched on, so turning a tab off and
+ * back on does not throw away what was typed into it. `groups` alone decides what is
+ * searched, and it is never empty.
+ */
+export interface SearchFormState {
+  groups: PropertyTypeGroup[];
+  forms: Record<PropertyTypeGroup, FilterFormState>;
 }

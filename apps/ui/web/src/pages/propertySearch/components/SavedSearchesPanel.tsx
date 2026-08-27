@@ -3,7 +3,7 @@ import { Card } from '../../../components/ui/card';
 import { Spinner } from '../../../components/ui/spinner';
 import SavedSearchMenu from './SavedSearchMenu';
 import type { SavedSearch } from '../../../types/listings';
-import { describeFilters, toFilterForm } from '../utils/filterOptions';
+import { summariseSearchForm, toSearchForm } from '../utils/filterOptions';
 import { formatLastRun } from '../utils/lastRun';
 import { cn } from '../../../lib/utils';
 
@@ -94,7 +94,7 @@ export default function SavedSearchesPanel({
                   <div className='min-w-0'>
                     <p className='type-ui-name truncate'>{search.name}</p>
                     <p className='type-ui-sm truncate text-muted'>
-                      {describeFilters(toFilterForm(search))}
+                      {summariseSearchForm(toSearchForm(search))}
                       {listSummary && ` (${listSummary})`}
                     </p>
                     <p className='type-ui-sm truncate text-muted'>

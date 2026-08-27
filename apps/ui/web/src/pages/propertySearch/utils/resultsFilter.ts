@@ -20,14 +20,27 @@
  *
  * Districts are not read here. On the results screen they belong to the map rail, which
  * keeps its own rule about properties it cannot place, so applying them here as well
- * would quietly drop the ones the map deliberately keeps.
+ * would quietly drop the ones the map deliberately keeps. They are also the one filter
+ * that stays shared across the property types, for that same reason.
+ *
+ * Everything else is per property type, mirroring the search form: each type is narrowed
+ * by its own bounds, and turning a type off takes it off the screen entirely.
  */
-import type { FilterFormState, ListingRow, Property } from '../../../types/listings';
+import type {
+  FilterFormState,
+  ListingRow,
+  Property,
+  PropertyTypeGroup,
+  SearchFormState,
+} from '../../../types/listings';
 import { toListingRows } from '../../../lib/listingRows';
 import {
   BATHROOM_OPTIONS,
   BEDROOM_OPTIONS,
+  DEFAULT_FILTER_FORM,
   LAST_POSTED_OPTIONS,
+  PROPERTY_TYPE_GROUP_BY_CODE,
+  PROPERTY_TYPE_GROUPS,
   PROPERTY_TYPE_OPTIONS,
   TENURE_OPTIONS,
 } from './filterOptions';
@@ -52,13 +65,36 @@ export interface ResultFacets {
   top: Bounds | null;
 }
 
+/**
+ * The same, one entry per property type, plus which types the results actually contain.
+ *
+ * Every group is present in `byGroup` whether or not the results carry one, so a lookup
+ * is total and a tab that has just been turned back on has something to read. `groups` is
+ * what the tab strip offers.
+ */
+export interface ResultFacetsByGroup {
+  groups: PropertyTypeGroup[];
+  byGroup: Record<PropertyTypeGroup, ResultFacets>;
+}
+
 export interface FilteredResults {
   properties: Property[];
   /** Units the filter took off a card, which the card counts under its table. */
   filteredUnitIds: Set<string>;
 }
 
-/** The groups this filter can answer, in the order the panel renders them. */
+/** A results filter that narrows nothing: every type on, every bound clear. */
+export const DEFAULT_RESULT_FILTER: SearchFormState = {
+  groups: [...PROPERTY_TYPE_GROUPS],
+  forms: { N: DEFAULT_FILTER_FORM, H: DEFAULT_FILTER_FORM, L: DEFAULT_FILTER_FORM },
+};
+
+/**
+ * The groups this filter can answer, in the order the panel renders them.
+ *
+ * Districts are absent: they are shared across the property types and counted separately,
+ * since the map rail edits the same selection.
+ */
 export const RESULT_FILTER_KEYS: (keyof FilterFormState)[] = [
   'minPrice',
   'maxPrice',
@@ -72,7 +108,6 @@ export const RESULT_FILTER_KEYS: (keyof FilterFormState)[] = [
   'tenureCode',
   'bedrooms',
   'bathrooms',
-  'districtCode',
   'listingFeatures',
   'lastPosted',
 ];
@@ -107,10 +142,37 @@ export function tenureCodeOf(tenure: string | null | undefined): string | null {
   return TENURE_CODES.has(code) ? code : null;
 }
 
-/** The same, for the property type, which the scrape states as the chip's own label. */
+/**
+ * The property type a result states, as the code the chips use.
+ *
+ * Enrichment states the type as prose ("Semi-Detached House"), which is the chip's own
+ * label, but a property whose project page never loaded states the listing feed's raw
+ * code instead. Both are read, since on landed homes the second is the common case.
+ */
 export function propertyTypeCodeOf(propertyType: string | null | undefined): string | null {
   if (!propertyType) return null;
-  return PROPERTY_TYPE_BY_LABEL[propertyType.trim().toLowerCase()] ?? null;
+  const text = propertyType.trim();
+  if (PROPERTY_TYPE_GROUP_BY_CODE[text]) return text;
+  return PROPERTY_TYPE_BY_LABEL[text.toLowerCase()] ?? null;
+}
+
+/**
+ * Which property type group a result belongs to, which is what decides the tab it
+ * answers to.
+ *
+ * The scrape stamps the group on every property it returns. Results cached before the
+ * search covered more than condos carry none, and read as non-landed: that is not a
+ * guess, it is what the scraper hardcoded at the time. The type code is tried in between
+ * for the same reason it is read above, so a property that states its type but not its
+ * group still lands on the right tab.
+ */
+export function propertyGroupOf(property: Property): PropertyTypeGroup {
+  const stated = property.info.propertyTypeGroup;
+  if (stated && (PROPERTY_TYPE_GROUPS as string[]).includes(stated)) {
+    return stated as PropertyTypeGroup;
+  }
+  const code = propertyTypeCodeOf(property.info.propertyType);
+  return (code && PROPERTY_TYPE_GROUP_BY_CODE[code]) || 'N';
 }
 
 /** "5+" is one chip, so a six bedroom unit answers to 5. Studio is 0, per BEDROOM_OPTIONS. */
@@ -147,16 +209,8 @@ function toNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/**
- * Read every result once and collect what the panel is allowed to offer.
- *
- * Taken over the properties before this filter runs, never after: a facet computed from
- * the filtered list would lose the last value carrying it the moment it was chosen, and
- * the chip the user just pressed would grey itself out.
- */
-export function resultFacets(properties: Property[]): ResultFacets {
-  const now = Math.floor(Date.now() / 1000);
-  const facets: ResultFacets = {
+function emptyFacets(): ResultFacets {
+  return {
     districtCode: new Set(),
     propertyTypeCode: new Set(),
     tenureCode: new Set(),
@@ -169,10 +223,36 @@ export function resultFacets(properties: Property[]): ResultFacets {
     psf: null,
     top: null,
   };
+}
+
+/**
+ * Read every result once and collect what each property type's tab is allowed to offer.
+ *
+ * Per type, because each tab narrows its own type and nothing else: greying a bedroom
+ * chip on the Landed tab because no flat has that many rooms would be answering the wrong
+ * question. Districts are the exception and are collected once across every type, since
+ * the map rail edits one selection for the whole result set.
+ *
+ * Taken over the properties before this filter runs, never after: a facet computed from
+ * the filtered list would lose the last value carrying it the moment it was chosen, and
+ * the chip the user just pressed would grey itself out.
+ */
+export function resultFacets(properties: Property[]): ResultFacetsByGroup {
+  const now = Math.floor(Date.now() / 1000);
+  const byGroup: Record<PropertyTypeGroup, ResultFacets> = {
+    N: emptyFacets(),
+    H: emptyFacets(),
+    L: emptyFacets(),
+  };
+  const present = new Set<PropertyTypeGroup>();
+  const districts = new Set<string>();
 
   for (const property of properties) {
+    const group = propertyGroupOf(property);
+    present.add(group);
+    const facets = byGroup[group];
     const { district, propertyType, tenure, topYear } = property.info;
-    if (district) facets.districtCode.add(district);
+    if (district) districts.add(district);
     const typeCode = propertyTypeCodeOf(propertyType);
     if (typeCode) facets.propertyTypeCode.add(typeCode);
     const tenureCode = tenureCodeOf(tenure);
@@ -194,7 +274,11 @@ export function resultFacets(properties: Property[]): ResultFacets {
     }
   }
 
-  return facets;
+  // The one shared set, handed to every tab so the district row reads the same whichever
+  // tab it is rendered under.
+  for (const group of PROPERTY_TYPE_GROUPS) byGroup[group].districtCode = districts;
+
+  return { groups: PROPERTY_TYPE_GROUPS.filter(group => present.has(group)), byGroup };
 }
 
 function propertyMatcher(form: FilterFormState): ((property: Property) => boolean) | null {
@@ -282,17 +366,38 @@ function unitMatcher(form: FilterFormState): ((row: ListingRow) => boolean) | nu
  */
 export function filterResults(
   properties: Property[],
-  form: FilterFormState,
+  form: SearchFormState,
   hiddenUnitIds: Set<string>
 ): FilteredResults {
-  const matchesProperty = propertyMatcher(form);
-  const matchesUnit = unitMatcher(form);
-  if (!matchesProperty && !matchesUnit) return { properties, filteredUnitIds: new Set() };
+  // Built once per type rather than per property: each is a closure over parsed bounds,
+  // and a result set is far longer than three.
+  const matchers = {} as Record<
+    PropertyTypeGroup,
+    {
+      property: ((property: Property) => boolean) | null;
+      unit: ((row: ListingRow) => boolean) | null;
+    }
+  >;
+  for (const group of PROPERTY_TYPE_GROUPS) {
+    matchers[group] = {
+      property: propertyMatcher(form.forms[group]),
+      unit: unitMatcher(form.forms[group]),
+    };
+  }
+  const allGroups = PROPERTY_TYPE_GROUPS.every(group => form.groups.includes(group));
+  const narrows =
+    !allGroups ||
+    PROPERTY_TYPE_GROUPS.some(group => matchers[group].property || matchers[group].unit);
+  if (!narrows) return { properties, filteredUnitIds: new Set() };
 
   const filteredUnitIds = new Set<string>();
   const kept: Property[] = [];
 
   for (const property of properties) {
+    const group = propertyGroupOf(property);
+    // A type switched off is off the screen, which is what the tab strip means here.
+    if (!form.groups.includes(group)) continue;
+    const { property: matchesProperty, unit: matchesUnit } = matchers[group];
     if (matchesProperty && !matchesProperty(property)) continue;
     if (!matchesUnit) {
       kept.push(property);
@@ -314,10 +419,29 @@ export function filterResults(
   return { properties: kept, filteredUnitIds };
 }
 
-/** How many of these groups are set, for the count on the button that opens the panel. */
-export function countResultFilters(form: FilterFormState): number {
-  return RESULT_FILTER_KEYS.filter(key => {
-    const value = form[key];
-    return Array.isArray(value) ? value.length > 0 : String(value).trim() !== '';
-  }).length;
+/**
+ * How many of these groups are set, for the count on the button that opens the panel.
+ *
+ * Districts come in separately, because the map rail holds that selection rather than the
+ * filter form. Leaving a property type out counts once however many are left out, since
+ * it is one decision on one strip.
+ */
+export function countResultFilters(
+  form: SearchFormState,
+  districts: string[],
+  available: PropertyTypeGroup[]
+): number {
+  const perGroup = available
+    .filter(group => form.groups.includes(group))
+    .reduce(
+      (total, group) =>
+        total +
+        RESULT_FILTER_KEYS.filter(key => {
+          const value = form.forms[group][key];
+          return Array.isArray(value) ? value.length > 0 : String(value).trim() !== '';
+        }).length,
+      0
+    );
+  const typesLeftOut = available.some(group => !form.groups.includes(group)) ? 1 : 0;
+  return perGroup + typesLeftOut + (districts.length > 0 ? 1 : 0);
 }
