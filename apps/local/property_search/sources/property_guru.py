@@ -318,10 +318,33 @@ class PropertyGuruSource:
             if filters.get(key):
                 params.append((param, "true"))
 
+        # Sent even though `date` with `desc` is the one pair Cloudflare refuses outright,
+        # which makes page 1 cost a credit through the unlocker rather than nothing.
+        #
+        # Omitting it was tried first and is wrong. Measured against the pair on the same
+        # search seconds apart, with page 1 confirmed stable across repeats: a search sent
+        # with no sort at all shares 2 of its 20 results with one sorted newest first. The
+        # default ordering runs newest-ish but is not a date sort -- it returned listings
+        # spanning four days, and only three of them from the newest, where the explicit
+        # pair returned twenty from that day alone. It promotes older listings over newer,
+        # which is the opposite of what this search asked for, and page 1 choosing
+        # differently moves every page after it.
+        #
+        # No cheaper spelling exists. `order=desc` alone, `sort=posted_date`, and a
+        # capitalised value are all served by the site and all return the default order or
+        # worse; every spelling that clears the challenge also loses the sort.
         params.append(("sort", filters.get("sort") or "date"))
         params.append(("order", filters.get("order") or "desc"))
 
-        return f"{BASE_URL}/property-for-sale/{page}?{urlencode(params)}"
+        # Page 1 is asked for by the query alone. Measured live: the number in the PATH is
+        # what Cloudflare challenges, so `/property-for-sale/1?page=1` is refused while
+        # `/property-for-sale?page=1` answers 200 with the same 20 cards and the same
+        # totalPages. Later pages keep the canonical path form, since they are challenged
+        # either way and go through the unlocker (see `fetching.py`), and only the path
+        # form is known to paginate: there is no way to check the query-only form against
+        # a page nothing can read directly.
+        path = "/property-for-sale" if page <= 1 else f"/property-for-sale/{page}"
+        return f"{BASE_URL}{path}?{urlencode(params)}"
 
     def parse_listings(self, html: str) -> list:
         """Return one normalised record per organic listing card on a search-results page."""

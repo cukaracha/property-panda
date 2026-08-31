@@ -163,6 +163,14 @@ HELP_NOTICE = (
     "opened. The search continues by itself once the page loads."
 )
 
+# What the job fails with once a verification has been abandoned. The browser's own
+# version of the unlocker refusing the account: an unknown number of pages were never
+# read, so the run has to end with a reason rather than report a short result set.
+GAVE_UP_NOTICE = (
+    "The human verification in the Chrome window was not completed in time, so some pages "
+    "were never read. Run the search again, or switch the scrape mode to API."
+)
+
 
 class FetchError(RuntimeError):
     """A page could not be retrieved after every retry was spent."""
@@ -189,6 +197,10 @@ class BrowserSession:
         # Set once a manual verification has run out of time. Asking a second time just
         # spends another five minutes on a batch that is lost either way.
         self._gave_up = False
+        # Set for the length of one fetch_many, and read everywhere this session waits.
+        # It lives here rather than in a parameter because the wait that matters most is
+        # three calls down, inside the loop that watches a challenge for a human.
+        self._abort = lambda: False
 
     def __enter__(self):
         options = Options()
@@ -209,7 +221,17 @@ class BrowserSession:
         options.add_argument("--disable-backgrounding-occluded-windows")
         options.add_argument("--disable-renderer-backgrounding")
 
-        self._driver = webdriver.Chrome(options=options)
+        try:
+            self._driver = webdriver.Chrome(options=options)
+        except Exception as e:
+            # run.sh cannot check for Chrome up front any more, because the mode is a
+            # setting the user changes while it is running. So the check is here, and it
+            # answers in the same voice the missing unlocker credentials do.
+            detail = (str(e).strip().splitlines() or ["it would not start"])[0]
+            raise FetchError(
+                f"Browser mode could not start Google Chrome ({detail}). Install Chrome, "
+                "or switch the scrape mode to API."
+            ) from e
         self._driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_SECONDS)
 
         self._anchor = self._driver.current_window_handle
@@ -228,6 +250,17 @@ class BrowserSession:
             self._anchor = None
             self._solve = None
 
+    @property
+    def transport_error(self) -> str:
+        """The failure that stopped this session, or '' when there was none.
+
+        Only one thing here ends a run rather than degrading it: a verification nobody
+        completed. Everything else the browser meets is a page that would not load, which
+        enrichment is allowed to shrug off. `scraper._check_stopped` reads this and the
+        HTTP transport's account level refusal through the same name.
+        """
+        return GAVE_UP_NOTICE if self._gave_up else ""
+
     # ----------------------------------------------------------------- fetching
 
     def fetch_html(self, url: str, must_contain: str = "", extract_js: str = "") -> str:
@@ -242,7 +275,7 @@ class BrowserSession:
         return html
 
     def fetch_many(self, targets: list, must_contain: str = "", on_progress=None,
-                   concurrency: int = 1, extract_js: str = "") -> dict:
+                   concurrency: int = 1, extract_js: str = "", should_abort=None) -> dict:
         """Fetch many URLs from inside the anchor tab, returning {key: html} for the good ones.
 
         `targets` is a list of (key, url), where the key is anything hashable and is what
@@ -259,7 +292,15 @@ class BrowserSession:
         how far through it is rather than going quiet for the whole batch. A URL counts
         as done once it is neither queued nor in flight -- fetched, or out of retries --
         so a job waiting out a backoff correctly counts as still outstanding.
+
+        `should_abort()` is asked between batches, while a batch drains, and while a
+        challenge is being waited on. Once it answers True nothing further is submitted
+        and the partial result comes back rather than raising, so the caller keeps
+        whatever was already fetched. What the in-page pool already holds runs on into a
+        tab nobody reads until the session quits Chrome: a batch is handed over in one go
+        and cannot be taken back, which makes stopping coarser here than over HTTP.
         """
+        self._abort = should_abort or (lambda: False)
         pending = deque(
             {"key": key, "url": url, "attempt": 0, "ready_at": 0.0} for key, url in targets
         )
@@ -277,7 +318,7 @@ class BrowserSession:
 
         report()
 
-        while pending:
+        while pending and not self._abort():
             batch = self._take_due(pending)
             if not batch:
                 # Everything left is still waiting out a retry backoff.
@@ -314,7 +355,7 @@ class BrowserSession:
             # Only once the batch is over, and only if there is still work: a challenge
             # takes a navigation to clear, and navigating while the pool is running would
             # pull the document out from under it.
-            if challenged and pending:
+            if challenged and pending and not self._abort():
                 self._solve_challenge(challenged)
 
         return results
@@ -359,6 +400,8 @@ class BrowserSession:
         last_landing = time.monotonic()
         while outstanding:
             time.sleep(DRAIN_INTERVAL_SECONDS)
+            if self._abort():
+                break
             try:
                 drained = self._driver.execute_script(_DRAIN_JS)
             except Exception as e:
@@ -439,6 +482,13 @@ class BrowserSession:
                     self._on_notice("")
                 return True
 
+            # Before the budget, not after it: this loop is the longest wait in the whole
+            # transport, and the one a user is most likely to press Cancel during.
+            if self._abort():
+                if asked:
+                    self._on_notice("")
+                return False
+
             elapsed = time.monotonic() - started
             if elapsed > MANUAL_SOLVE_SECONDS:
                 if asked:
@@ -472,3 +522,12 @@ class BrowserSession:
         job["ready_at"] = time.monotonic() + backoff
         pending.append(job)
         return True
+
+
+def open_session(on_notice=None):
+    """Open a session for one scrape job. This transport drives one visible Chrome window.
+
+    Every transport module offers this name, so `scraper._TRANSPORTS` can hold the modules
+    themselves and the job never has to know which class it ended up with.
+    """
+    return BrowserSession(on_notice=on_notice)

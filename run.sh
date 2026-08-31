@@ -2,11 +2,16 @@
 
 # Launch Property Panda: the local API (scraper + assistant) and the web app, together.
 #
-# Everything this starts runs on this machine. The scraper drives a real, visible Chrome
-# window because PropertyGuru sits behind a Cloudflare challenge that only clears for a
-# genuine browser, and sometimes only after you click in it. The in-app assistant runs on
-# your own Claude subscription through the `claude` CLI — see
-# apps/local/property_search/README.md.
+# Everything this starts runs on this machine. The scraper reads PropertyGuru one of two
+# ways, chosen by the switch at the bottom of the nav rail: over plain HTTP wearing Chrome's
+# own TLS fingerprint, paying Bright Data's Web Unlocker for the handful of page shapes
+# Cloudflare refuses outright, or by driving a visible Chrome window you clear those in
+# yourself. Neither is checked for here, since the mode is a setting you change while this
+# is already running. The in-app assistant runs on your own Claude subscription through the
+# `claude` CLI — see apps/local/property_search/README.md.
+#
+# Secrets and overrides go in a .env beside this script, which is gitignored. Put your
+# Bright Data credentials there.
 #
 # Usage:
 #   ./run.sh                Start both services (installing anything missing first)
@@ -27,9 +32,8 @@ API_PORT=8000
 UI_PORT=3000
 PYTHON_VERSION=3.12
 
-# Job control, so each background service gets its own process group. Without it, killing
-# the API on Ctrl+C leaves chromedriver and its Chrome behind, holding the browser profile
-# lock that the next run needs.
+# Job control, so each background service gets its own process group, and Ctrl+C takes
+# down everything a service started rather than the service alone.
 set -m
 
 RUN_API=true
@@ -73,6 +77,40 @@ port_pid() {
 # Preflight
 # ============================================================================
 
+# Read the .env beside this script into the environment, so the services this starts
+# inherit it. Deliberately not `source`d: that file holds a token and nothing else needs
+# to be able to run shell out of it. A variable already set wins over the file, which is
+# what keeps `UNLOCKER_CONCURRENCY=1 ./run.sh` working.
+load_env() {
+    local file="$REPO_ROOT/.env"
+    [ -f "$file" ] || return 0
+
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in ''|'#'*) continue ;; esac
+        line="${line#export }"
+        case "$line" in *=*) ;; *) continue ;; esac
+
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="${key%"${key##*[![:space:]]}"}"
+        case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+
+        # Trailing whitespace, then one matching pair of surrounding quotes, so a value
+        # written either way arrives as what was meant rather than with the quotes in it.
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        case "$value" in
+            \"*\") value="${value#\"}"; value="${value%\"}" ;;
+            \'*\') value="${value#\'}"; value="${value%\'}" ;;
+        esac
+
+        [ -n "${!key+set}" ] && continue
+        export "$key=$value"
+    done < "$file"
+}
+
 check_prerequisites() {
     command -v node >/dev/null 2>&1 || fail "node is required. Install Node.js, then re-run."
     command -v npm  >/dev/null 2>&1 || fail "npm is required. Install Node.js, then re-run."
@@ -90,20 +128,13 @@ check_prerequisites() {
          and save the token on the profile page."
     fi
 
-    # Checked here rather than left to Selenium, which reports a missing browser as an
-    # unrelated-looking driver error. Real Google Chrome specifically: Chromium is
-    # fingerprinted by Cloudflare and does not clear the challenge.
-    if [ "$RUN_API" = true ] && ! chrome_installed; then
-        fail "Google Chrome was not found. The scraper drives a real Chrome window;
-       install it from https://google.com/chrome and re-run."
+    # Warned rather than fatal, and only for the searches that need it: everything but a
+    # search's second page and beyond is read without spending anything.
+    if [ "$RUN_API" = true ] && { [ -z "$BRIGHTDATA_API_KEY" ] || [ -z "$BRIGHTDATA_ZONE" ]; }; then
+        warn "BRIGHTDATA_API_KEY and BRIGHTDATA_ZONE are not both set, so a search that
+         needs more than the first page of results will stop and say so. Put them in
+         $REPO_ROOT/.env. See apps/local/property_search/README.md."
     fi
-}
-
-chrome_installed() {
-    if [ -d "/Applications/Google Chrome.app" ]; then return 0; fi
-    if command -v google-chrome >/dev/null 2>&1; then return 0; fi
-    if command -v google-chrome-stable >/dev/null 2>&1; then return 0; fi
-    return 1
 }
 
 check_ports() {
@@ -244,8 +275,8 @@ open_when_ready() {
     fi
 }
 
-# Signal the whole process group, not just the child, so the API takes chromedriver and
-# any Chrome it opened down with it.
+# Signal the whole process group, not just the child, so a service takes whatever it
+# started down with it.
 stop_service() {
     local pid=$1
     if [ -z "$pid" ]; then
@@ -288,6 +319,7 @@ parse_args() {
 
 main() {
     parse_args "$@"
+    load_env
     check_prerequisites
     check_ports
 

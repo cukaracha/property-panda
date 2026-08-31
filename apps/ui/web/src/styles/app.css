@@ -859,12 +859,14 @@
     display: block;
   }
 
-  .theme-switch {
+  /* Shared by every nav row that is a switch rather than a link: the scrape mode and
+     the theme. Rail width has no room for it, so it is the drawer's affordance alone. */
+  .nav-switch {
     display: none;
   }
 
   @media (max-width: 767px) {
-    .theme-switch {
+    .nav-switch {
       display: block;
       margin-left: auto;
       position: relative;
@@ -876,7 +878,7 @@
       border: 1px solid var(--border-default);
       transition: var(--transition-control);
     }
-    .theme-switch__knob {
+    .nav-switch__knob {
       position: absolute;
       top: 50%;
       left: 2px;
@@ -889,11 +891,11 @@
         transform var(--duration-fast) var(--ease-standard),
         background var(--duration-fast) var(--ease-standard);
     }
-    .theme-row[aria-checked='true'] .theme-switch {
+    .nav-item[aria-checked='true'] .nav-switch {
       background: var(--surface-brand-subtle);
       border-color: var(--border-brand);
     }
-    .theme-row[aria-checked='true'] .theme-switch__knob {
+    .nav-item[aria-checked='true'] .nav-switch__knob {
       transform: translateY(-50%) translateX(14px);
       background: var(--surface-brand);
     }

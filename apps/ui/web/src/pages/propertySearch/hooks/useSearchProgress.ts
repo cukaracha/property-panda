@@ -18,8 +18,8 @@ import type { SearchResultsResponse } from '../../../types/listings';
 
 const INITIAL_DELAY_MS = 5000;
 const INTERVAL_MS = 5000;
-// 30 minutes at the interval below. Long, because a scrape that stops for human
-// verification is idle for however long it takes the user to notice the window.
+// 30 minutes at the interval below. Long, because an uncapped search walks every page
+// the site has, and the poller must outlast the longest one rather than the usual one.
 const MAX_ATTEMPTS = 360;
 const MAX_CONSECUTIVE_ERRORS = 3;
 

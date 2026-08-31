@@ -13,12 +13,14 @@ export const STATUS_LABELS: Record<SearchStatus, string> = {
   enriching: 'Fetching property details',
   succeeded: 'Done',
   failed: 'Search failed',
+  cancelled: 'Search cancelled',
 };
 
 /**
- * The steps the progress card lists. `queued` is not one of them: the job is only
- * queued for the seconds it takes Chrome to start, and a fourth step that is always
- * already ticked reads as noise.
+ * The steps the progress card lists. Neither `queued` nor `cancelled` is one of them: a
+ * job is only queued for the moment before the worker picks it up, and a cancelled one
+ * never reaches a step at all. Both are states the run is in, not stages it passes
+ * through.
  */
 export const PROGRESS_STEPS: SearchStatus[] = ['scraping', 'enriching', 'succeeded'];
 

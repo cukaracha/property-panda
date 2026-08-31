@@ -32,7 +32,7 @@ import { useAlwaysHidden } from '../../hooks/useAlwaysHidden';
 import { useSearchProgress } from './hooks/useSearchProgress';
 import { useStartSearch } from './hooks/useStartSearch';
 import { useResultsPageContext } from './PageContext';
-import { createSavedSearch, updateSavedSearch } from '../../services/listingsService';
+import { cancelSearch, createSavedSearch, updateSavedSearch } from '../../services/listingsService';
 import { usePropertySearchResultsStore } from '../../store/usePropertySearchStore';
 import type {
   BookmarkedEntity,
@@ -126,6 +126,10 @@ export default function PropertySearchResults() {
   const [isEditingSearch, setIsEditingSearch] = useState(false);
   const [isFilteringResults, setIsFilteringResults] = useState(false);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
+  // Held here rather than derived from the status, because the two do not line up: the
+  // scrape finishes whatever it has in flight before the job goes terminal, so there are
+  // several seconds where the press has landed and the status still says 'scraping'.
+  const [isCancelling, setIsCancelling] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   // Where the map is pointing. Deliberately plain component state: this narrows what is on
   // screen and nothing else. It is never written to searchForm, never sent to the server
@@ -213,10 +217,12 @@ export default function PropertySearchResults() {
 
   const errorMessage = pollError || status?.error || '';
   // A failed job keeps its id, so the failure survives a reload instead of bouncing
-  // the user back to the filters with nothing said.
+  // the user back to the filters with nothing said. A cancelled one keeps it for the same
+  // reason: it is an outcome the user asked for and should still be able to read.
   const isFailed = Boolean(pollError) || status?.status === 'failed';
-  const isRunning = jobId !== null && !isFailed;
-  const phase = isRunning ? 'running' : isFailed ? 'failed' : 'ready';
+  const isCancelled = status?.status === 'cancelled';
+  const isRunning = jobId !== null && !isFailed && !isCancelled;
+  const phase = isRunning ? 'running' : isFailed ? 'failed' : isCancelled ? 'cancelled' : 'ready';
 
   const allProperties = useMemo(() => results?.properties ?? [], [results]);
 
@@ -337,6 +343,21 @@ export default function PropertySearchResults() {
     const keys = resultEntityKeys(allProperties);
     return bookmarked.filter(entity => keys.has(entity.entityKey));
   }, [bookmarked, allProperties]);
+
+  // A request rather than a stop: the scrape finishes what it already has in flight, so
+  // the job reaches 'cancelled' on a later poll rather than the moment this returns. The
+  // pressed state is only released on a failure, since on success the progress card is
+  // about to be replaced anyway.
+  const stopSearch = async () => {
+    if (!jobId) return;
+    setIsCancelling(true);
+    try {
+      await cancelSearch(jobId);
+    } catch (err) {
+      setIsCancelling(false);
+      addToast('error', err instanceof Error ? err.message : 'Failed to stop the search');
+    }
+  };
 
   // Handing the finished payload to the store also clears the job id, which stops
   // the poller and swaps the progress card for the cards it produced.
@@ -639,12 +660,22 @@ export default function PropertySearchResults() {
                 detailsFetched={status?.detailsFetched ?? 0}
                 detailsTotal={status?.detailsTotal ?? 0}
                 note={status?.note}
+                onCancel={stopSearch}
+                isCancelling={isCancelling}
               />
             ) : isFailed ? (
               <SearchErrorPanel
                 message={errorMessage || 'The scrape failed before it returned any results.'}
                 detail={status?.errorDetail}
               />
+            ) : isCancelled ? (
+              <Card className='px-6 py-16 text-center'>
+                <p className='type-ui-title text-strong'>Search cancelled</p>
+                <p className='type-ui-sm mt-1 text-muted'>
+                  You stopped this search before it finished, so there are no results. The property
+                  details it had already fetched are kept, so running it again will be quicker.
+                </p>
+              </Card>
             ) : expired ? (
               <Card className='px-6 py-16 text-center'>
                 <p className='type-ui-title text-strong'>These results are no longer available</p>

@@ -1,6 +1,7 @@
 """
 Persistence for the local scraper: the job rows, the property cache, the listing photos,
-the saved searches, the shortlist, the always hidden list and the result JSON.
+the saved searches, the shortlist, the always hidden list, the result JSON and the one
+app level setting, which transport a scrape runs on.
 
 Everything lives in JSON files under `.data/` next to this module. The cloud version of
 this scraper used DynamoDB for the rows and S3 for the results; running on one machine
@@ -30,6 +31,7 @@ LISTING_PHOTOS_FILE = os.path.join(DATA_DIR, "listing_photos.json")
 SAVED_SEARCHES_FILE = os.path.join(DATA_DIR, "saved_searches.json")
 SHORTLIST_FILE = os.path.join(DATA_DIR, "shortlist.json")
 ALWAYS_HIDDEN_FILE = os.path.join(DATA_DIR, "always_hidden.json")
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 PROPERTY_TTL_SECONDS = int(os.environ.get("PROPERTY_TTL_SECONDS", str(30 * 24 * 3600)))
 # A project page that would not load is remembered too, but only briefly: the usual
@@ -50,6 +52,16 @@ MAX_SHORTLIST = 200
 # The always hidden list is bounded like a search's own hidden list, since it holds the
 # same kind of entry and answers the same question across every search instead of one.
 MAX_ALWAYS_HIDDEN = 500
+# The statuses a job never leaves. A cancel arriving after one of these has nothing left
+# to stop, and must not rewrite an outcome the user has already been shown.
+TERMINAL_STATUSES = ("succeeded", "failed", "cancelled")
+# The transports a scrape can run on. `api` reads the site over HTTP and pays the
+# unlocker for the page shapes Cloudflare refuses; `browser` drives a visible Chrome and
+# asks the user to clear a challenge when one appears. The environment only says what to
+# do on a machine where nobody has chosen yet, so a choice made in the app wins over it.
+SCRAPE_MODES = ("api", "browser")
+_ENV_SCRAPE_MODE = os.environ.get("SCRAPE_TRANSPORT", "")
+DEFAULT_SCRAPE_MODE = _ENV_SCRAPE_MODE if _ENV_SCRAPE_MODE in SCRAPE_MODES else "api"
 
 _lock = threading.Lock()
 
@@ -83,6 +95,34 @@ def _write(path: str, data: dict):
     os.replace(temp_path, path)
 
 
+# -------------------------------------------------------------------- settings
+
+
+def get_scrape_mode() -> str:
+    """Which transport a scrape runs on, read fresh at the start of every job.
+
+    A value that is not a transport this build knows falls back to the default, so a
+    hand-edited settings file cannot leave the scraper with nothing to fetch through.
+    """
+    with _lock:
+        settings = _read(SETTINGS_FILE)
+    mode = settings.get("scrapeMode")
+    return mode if mode in SCRAPE_MODES else DEFAULT_SCRAPE_MODE
+
+
+def put_scrape_mode(mode: str) -> str:
+    """Save the transport every later scrape runs on, returning what was stored.
+
+    A job already in flight is unaffected: it built its session when it started and
+    finishes on the transport it opened with.
+    """
+    with _lock:
+        settings = _read(SETTINGS_FILE)
+        settings["scrapeMode"] = mode
+        _write(SETTINGS_FILE, settings)
+    return mode
+
+
 # ------------------------------------------------------------------------ jobs
 
 
@@ -111,6 +151,11 @@ def create_job(
         "error": None,
         "errorDetail": None,
         "note": None,
+        # Set by request_cancel and read by the scrape thread as it works. It lives on the
+        # row rather than in memory because the thread that asks and the thread that
+        # answers are not the same one, and because a job still queued behind another has
+        # no thread of its own to hold a flag for it yet.
+        "cancelRequested": False,
         "createdAt": now,
         "updatedAt": now,
     }
@@ -141,6 +186,37 @@ def get_job(job_id: str) -> dict:
     """Return one job row, or {} when it is unknown or has aged out."""
     with _lock:
         return _read(JOBS_FILE).get(job_id) or {}
+
+
+def request_cancel(job_id: str) -> str:
+    """Ask one job to stop, returning the status it was on, or '' when the id is unknown.
+
+    A job that has already finished is left exactly as it was. There is nothing to stop,
+    and the caller can tell the two apart because the status it gets back is terminal.
+    """
+    with _lock:
+        jobs = _read(JOBS_FILE)
+        row = jobs.get(job_id)
+        if row is None:
+            return ""
+        status = row.get("status") or ""
+        if status not in TERMINAL_STATUSES:
+            row["cancelRequested"] = True
+            row["updatedAt"] = int(time.time())
+            jobs[job_id] = row
+            _write(JOBS_FILE, jobs)
+        return status
+
+
+def is_cancelled(job_id: str) -> bool:
+    """Whether this job has been asked to stop.
+
+    Read from the scrape thread while it works, which is why the caller throttles it: the
+    answer changes at most once per job and every read takes the lock every writer needs.
+    """
+    with _lock:
+        row = _read(JOBS_FILE).get(job_id) or {}
+    return bool(row.get("cancelRequested"))
 
 
 def _without_expired(jobs: dict, now: int) -> dict:

@@ -11,7 +11,9 @@ build/
 dist/
 out/
 
-# Environment files
+# Environment files. The root .env is what run.sh reads secrets and overrides out of,
+# the Bright Data credentials among them, and .env.local is written from AppConfig.json
+# on every start.
 .env
 .env.local
 .env.development.local

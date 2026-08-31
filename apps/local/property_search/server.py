@@ -7,6 +7,7 @@ no rework beyond pointing at this host instead of API Gateway:
     POST   /listings/search           -> 202 {jobId}, runs the scrape in the background
                                          optional savedSearchId names the search it
                                          re-runs, whose last run is stamped on success
+    POST   /listings/search/{id}/cancel -> ask a running scrape to stop
     GET    /listings/results?jobId=   -> the poll AND the fetch; results once succeeded
     GET    /listings/photos/{id}      -> one listing's photos, asked for when a carousel
                                          opens rather than carried with the results
@@ -33,14 +34,21 @@ browser invoked directly and is now an agent in this process (see `agent/`):
     GET    /profile/claude-token          -> whether a Claude token is saved
     PUT    /profile/claude-token          -> save or remove it
 
+And it holds the one app level setting, which transport a scrape reads the pages through:
+
+    GET    /settings/scrape-mode          -> the transport the next scrape will use
+    PUT    /settings/scrape-mode          -> choose between `api` and `browser`
+
 The cloud version ran the scrape on an SQS-triggered Lambda because API Gateway gives up
 at 29 seconds. Here the same handoff is a single background thread: the POST returns a
-jobId immediately and the SPA polls, which is what keeps the request alive across a scrape
-that pauses for however long the human verification takes.
+jobId immediately and the SPA polls, which is what keeps the request alive for as long as
+the scrape takes.
 
-Scrapes run ONE at a time. Chrome holds an exclusive lock on its user-data-dir, and that
-profile is what carries the Cloudflare clearance between runs, so a second concurrent
-browser would either fail to start or have to throw the clearance away.
+Scrapes run ONE at a time. In browser mode that is a hard constraint: Chrome holds an
+exclusive lock on the profile directory carrying the Cloudflare clearance, so a second
+session cannot start at all. The HTTP transport has no such lock, and there the same bound
+is a deliberate one on how hard one machine leans on the source and on how fast a paid
+tier can be spent. One limit either way, for two different reasons.
 
 There is no authentication: this listens on loopback and serves one person on one machine.
 """
@@ -117,6 +125,20 @@ async def create_search(request: Request):
     return {"jobId": job_id, "status": "queued"}
 
 
+@app.post("/listings/search/{job_id}/cancel")
+def cancel_search(job_id: str):
+    """Ask a running scrape to stop, answering with the status it was on.
+
+    Only a request: the scrape thread reads the flag between requests and stops submitting
+    new ones, so what is already in flight still finishes. A job that has already reached a
+    terminal status is left exactly as it was, which the caller can see in what comes back.
+    """
+    status = store.request_cancel(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"jobId": job_id, "status": status}
+
+
 @app.get("/listings/results")
 def get_search_results(jobId: str = ""):
     """One endpoint serves both the poll and the final fetch.
@@ -139,8 +161,9 @@ def get_search_results(jobId: str = ""):
         "unitCount": int(row.get("unitCount") or 0),
         "error": row.get("error"),
         "errorDetail": row.get("errorDetail"),
-        # What the browser is currently blocked on, e.g. an unsolved challenge. Present
-        # only while it is true, so the UI shows it and then stops showing it by itself.
+        # What the scrape is currently blocked on, e.g. the unlocker refusing the account.
+        # Present only while it is true, so the UI shows it and then stops showing it by
+        # itself.
         "note": row.get("note"),
         # How far through each phase the scrape is, so the readout can count rather than
         # sit on one label for the whole run. A total is 0 until the phase that knows it
@@ -519,6 +542,34 @@ async def put_claude_token(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
     return tokens.put_token(token)
+
+
+# --------------------------------------------------------------------- settings
+
+
+@app.get("/settings/scrape-mode")
+def get_scrape_mode():
+    """Which transport the next scrape will read the pages through."""
+    return {"mode": store.get_scrape_mode()}
+
+
+@app.put("/settings/scrape-mode")
+async def put_scrape_mode(request: Request):
+    """Choose the transport every later scrape runs on.
+
+    Later, not current: a job already in flight finishes on the session it opened with.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+
+    try:
+        mode = validation.clean_scrape_mode(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"mode": store.put_scrape_mode(mode)}
 
 
 @app.exception_handler(HTTPException)

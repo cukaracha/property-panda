@@ -1,8 +1,8 @@
 # Property Panda
 
 A property search app that runs entirely on your own machine: a **React** SPA, a
-local **FastAPI** server that scrapes PropertyGuru through a real Chrome window,
-and an in-app assistant running on your **Claude subscription**.
+local **FastAPI** server that scrapes PropertyGuru, and an in-app assistant
+running on your **Claude subscription**.
 
 Nothing is deployed and nothing is signed in to. Two processes on loopback, one
 person, one machine.
@@ -12,7 +12,7 @@ person, one machine.
 ```
   Browser (React SPA, apps/ui/web)  http://localhost:3000
       │
-      ├── REST ──► /listings/*   ─► scraper (Selenium + visible Chrome) ─► PropertyGuru
+      ├── REST ──► /listings/*   ─► scraper (curl_cffi, + Web Unlocker) ─► PropertyGuru
       │                              └─ jobs, results, saved searches, property cache → .data/*.json
       │
       └── SSE ──► /chat          ─► assistant (claude-agent-sdk → `claude` CLI)
@@ -23,12 +23,24 @@ person, one machine.
   apps/local/property_search  http://localhost:8000
 ```
 
-**The scrape needs a real browser.** PropertyGuru sits behind a Cloudflare
-managed challenge that returns 403 to every non-browser client and only clears
-for a genuine browser on a real display, sometimes only after a person clicks in
-it. That is why this is a local app driving a visible Chrome window rather than
-a Lambda. Scrapes run one at a time, because Chrome holds an exclusive lock on
-the profile directory that carries the clearance between runs.
+**The scrape gets past Cloudflare in two tiers.** PropertyGuru sits behind a
+managed challenge, but it only refuses two request shapes: a search sorted
+newest first by the explicit `sort` and `order` pair, and any search page past
+the first. Everything else answers a plain HTTP client wearing Chrome's own TLS
+fingerprint, which is tier 1 and is free. Bright Data's Web Unlocker is tier 2
+and reads the rest, at one credit a request against a free tier of 5,000 a
+month. See `apps/local/property_search/README.md` for the routing and the
+credentials it needs.
+
+**Or it drives a visible Chrome instead.** The switch at the bottom of the nav
+rail picks which. API mode is the above: unattended, and it spends credits.
+Browser mode opens a real Chrome window and reads the site from inside a page
+that has already cleared the challenge, which costs nothing but needs you at the
+machine to click through a challenge when one appears. Only the fetching
+changes, so a search saved in one mode and re-run in the other returns the same
+thing. Scrapes run one at a time either way: browser mode has to, since Chrome
+locks the profile directory that carries the clearance, and API mode does by
+choice.
 
 **The assistant reads the page, and can act on it.** The SPA sends a rendered
 description of what is currently on screen plus the actions available there
@@ -57,11 +69,12 @@ does nothing until you approve it.
 
 `run.sh` builds anything missing (the Python virtualenv, `npm install`) and
 writes `apps/ui/web/.env.local` from `AppConfig.json` on every start. Ctrl+C
-stops both services, and the Chrome the scraper opened with them.
+stops both services.
 
-**Prerequisites:** Node, Python 3.12 (or `uv`), real Google Chrome (Chromium is
-fingerprinted by Cloudflare and does not clear the challenge), and the `claude`
-CLI if you want the assistant.
+**Prerequisites:** Node, Python 3.12 (or `uv`), `BRIGHTDATA_API_KEY` and
+`BRIGHTDATA_ZONE` in the root `.env` if you want more than the first page of any
+search, and the `claude` CLI if you want the assistant. `run.sh` reads that
+`.env` on every start and git ignores it.
 
 ## The assistant
 
@@ -105,9 +118,11 @@ is gitignored and safe to delete:
 | `saved_searches.json` | Searches kept for re-running, and what each hides |
 | `chat/*.json`         | Chat transcripts, one per session                 |
 | `claude_token.json`   | Your Claude subscription token (mode 0600)        |
+| `settings.json`       | Which transport a scrape runs on                  |
 
-Browser Cloudflare clearance lives separately in `.chrome-profile/`. Delete that
-if the browser ever gets into a state you cannot clear.
+`.chrome-profile/` is the Chrome profile browser mode drives, and it is what
+carries a Cloudflare clearance from one run to the next. Deleting it costs
+nothing but the next challenge.
 
 ## Development
 

@@ -55,8 +55,8 @@ export function ThemeToggle({ floating, variant = 'button', className }: ThemeTo
         </span>
         <span className='ni-short'>{theme === 'dark' ? 'Dark' : 'Light'}</span>
         <span className='ni-label'>Dark mode</span>
-        <span className='theme-switch' aria-hidden='true'>
-          <span className='theme-switch__knob' />
+        <span className='nav-switch' aria-hidden='true'>
+          <span className='nav-switch__knob' />
         </span>
       </button>
     );

@@ -6,8 +6,14 @@
 # unresolvable together.
 fastapi>=0.121
 uvicorn>=0.34
-# Selenium drives a real, visible Chrome. 4.x bundles Selenium Manager, which resolves a
-# matching chromedriver on its own, so there is nothing to install by hand.
+# The scraper's transport. curl_cffi speaks TLS and HTTP/2 with Chrome's own fingerprints,
+# which is what gets a plain HTTP client past Cloudflare on everything but the shapes the
+# site refuses outright (see fetching.py).
+curl_cffi
+# Selenium drives a real, visible Chrome, which is the transport browser mode runs on: free
+# where the unlocker costs credits, at the price of someone being there to clear a
+# challenge. 4.x bundles Selenium Manager, which resolves a matching chromedriver on its
+# own, so there is nothing to install by hand.
 selenium==4.27.1
 # The in-app assistant. Drives the `claude` CLI, which run.sh checks for separately:
 # the SDK installs from PyPI but the CLI it shells out to does not come with it.

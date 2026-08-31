@@ -9,7 +9,8 @@
  * (`info.enrichment === 'unavailable'`).
  */
 
-export type SearchStatus = 'queued' | 'scraping' | 'enriching' | 'succeeded' | 'failed';
+export type SearchStatus =
+  'queued' | 'scraping' | 'enriching' | 'succeeded' | 'failed' | 'cancelled';
 
 export type Enrichment = 'ok' | 'unavailable';
 

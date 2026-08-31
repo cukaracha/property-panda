@@ -5,11 +5,9 @@ groups them by property and unit type, and serves them to the `Property search`
 page of the web app. It also runs the in-app assistant that answers questions
 about what is on that page.
 
-This runs on your machine rather than in the cloud. PropertyGuru sits behind a
-Cloudflare managed challenge: every non-browser client gets a 403, and the
-challenge only clears for a real browser on a real display — sometimes only
-after a person clicks in it. So the scraper drives a visible Chrome window you
-can reach, which a Lambda cannot offer.
+This runs on your machine, which is what lets the scrape read the site either
+way: over plain HTTP, or by driving a visible Chrome window on your desktop. See
+Which transport a scrape runs on and The two tiers below.
 
 ## Running it
 
@@ -21,7 +19,7 @@ From the repo root:
 
 That builds anything missing — the Python virtualenv, `npm install`, and an
 `apps/ui/web/.env.local` written from `AppConfig.json`. Ctrl+C stops both
-services, and the Chrome the scraper opened with them.
+services.
 
 `./run.sh --api` and `./run.sh --ui` start one side on its own, and
 `./run.sh --reinstall` rebuilds both dependency trees.
@@ -51,45 +49,118 @@ blocks waiting for a permission prompt no one is there to answer.
 An action is a proposal. The agent emits one `<act>` block and stops; the panel
 renders Approve and Reject, and the page's own callback only runs on approval.
 
-## The human verification
+## Which transport a scrape runs on
 
-Set your filters, hit search, and a Chrome window opens. Most of the time the
-challenge clears by itself within a few seconds and the window works through the
-pages on its own.
+The switch at the bottom of the nav rail picks between two ways of reading the
+same pages, and picks nothing else. Nothing about a job row, a saved search or a
+result records which one read them, so a search saved in one mode and re-run in
+the other is the same search returning the same thing.
 
-When it does not, after 30 seconds the page tells you it is waiting and the
-browser window stays open on the challenge. Complete it there. The scrape
-notices the page has loaded and carries on by itself — there is nothing to click
-in the app.
+**API** is the default and is what The two tiers below describes: plain HTTP for
+almost everything, the Web Unlocker for the shapes Cloudflare refuses. It needs
+nobody watching, and it spends credits.
 
-Clearance is kept in `.chrome-profile/`, so later runs usually skip the
-challenge altogether. Delete that directory if the browser ever gets into a
-state you cannot clear.
+**Browser** opens one real Chrome window and reads the site with `fetch()` from
+inside a page that has already cleared the challenge, which inherits the
+clearance cookie and Chrome's own fingerprint and skips rendering entirely. It
+costs nothing and needs Google Chrome installed, plus you at the machine: when
+Cloudflare asks for a click, the session waits `MANUAL_SOLVE_SECONDS` for you to
+answer and then fails the search rather than returning a short result set. The
+clearance is kept in `.chrome-profile/` between runs, and Chrome holds an
+exclusive lock on it, which is why scrapes run one at a time.
+
+Cancelling is coarser in browser mode. A batch is handed to the in-page pool in
+one go and cannot be taken back, so requests already issued run on into a tab
+nobody reads until the session quits Chrome. It stops waiting straight away
+though, including while it is waiting on you to clear a challenge.
+
+The mode is one setting on this machine, kept in `.data/settings.json` and read
+when a job starts, so flipping it never disturbs a search already running.
+`SCRAPE_TRANSPORT` names the default for a machine where nobody has chosen yet,
+and a choice made in the app wins over it from then on.
+
+## The two tiers
+
+PropertyGuru sits behind a Cloudflare managed challenge, but not on every
+request. Probed live against the site, only three request shapes are ever
+refused: a search URL carrying `sort=date` and `order=desc` together, a search
+URL with the page number in its path (`/property-for-sale/1?page=1` is refused
+where `/property-for-sale?page=1` is not), and any search page past the first.
+Project pages, listing pages and a first page with any combination of filters
+all answer 200 to a plain HTTP client, as long as that client's TLS and HTTP/2
+fingerprints look like a real Chrome.
+
+So tier 1 is `curl_cffi` impersonating Chrome, which is free and reads almost
+everything. The page number is simply left out of the path, which costs nothing.
+The sort pair is still sent though, and page 1 is paid for as a result. Omitting
+it was tried first and is wrong: a search sent with no sort shares 2 of its 20
+results with one sorted newest first, because the site's default ordering
+promotes older listings over newer. No cheaper spelling reproduces the sort, so
+this is the one place a credit buys correctness rather than convenience.
+
+Tier 2 is
+[Bright Data's Web Unlocker](https://docs.brightdata.com/scraping-automation/web-unlocker/send-your-first-request),
+a paid API that runs the challenge on its own infrastructure and hands back the
+page. It costs one credit per request whatever the page weighs, and it is used
+for search pages 2 and up, plus page 1 whenever the search is sorted newest
+first, which is the default. So a ten page search of one property type spends
+ten credits and a one page search spends one; the free tier renews 5,000 a
+month. Measured live, an unlocked page takes about 12 seconds against 0.3 for a
+free one, so it dominates how long a search feels as well as what it costs. It
+was three times that until the requests started asking to exit in Singapore:
+left to itself Bright Data routed through Los Angeles, and a search page pulls
+over two hundred subresources while it renders, every one of them crossing the
+Pacific twice. `UNLOCKER_COUNTRY` is what sets that.
+
+It is asked for `format: "json"` rather than `"raw"`, so the page arrives inside
+a `{status_code, headers, body}` envelope (their docs call that first key
+`status`, but a live call returns `status_code`). That keeps the target's own
+verdict apart from Bright Data's: under `raw` both arrive as one HTTP status and
+nothing documents which, so a project page that genuinely 404s would be
+indistinguishable from a token that was refused.
+
+Put `BRIGHTDATA_API_KEY` and `BRIGHTDATA_ZONE` in the `.env` at the repo root,
+which `run.sh` reads into the environment and which git ignores. Without them a
+search that only needs the first page still runs, and one that needs more stops
+and says so rather than quietly returning a short result set. A variable set on
+the command line wins over that file, so `UNLOCKER_CONCURRENCY=1 ./run.sh` still
+works.
+
+Routing is static where the answer is known and dynamic where it is not: a tier
+1 response that comes back refused (HTTP 403 with `cf-mitigated: challenge`)
+escalates to tier 2, and the shape it belongs to is remembered for the rest of
+the job. Every measurement above came from one residential connection, so if a
+shape starts being refused from somewhere else the escalation covers it without
+a code change.
+
+## Stopping a search
+
+Cancel search sits under the steps on the progress card. It is a request rather
+than a kill: the scrape stops starting new page fetches, and whatever is already
+in flight finishes, so the job usually goes terminal within a second. Nothing is
+written as a result, but the project pages it had already fetched stay in the
+cache, so running the search again is quicker.
 
 ## How a search runs
 
 `POST /listings/search` validates the filters, records a queued job and returns
 a jobId immediately; the page then polls `GET /listings/results?jobId=`, which
 is both the poll and the fetch. Behind it, one background thread reads the
-search result pages in a single browser session, fetches each new project page
-for the property-level facts (TOP year, total units, tenure, developer, PSF
-range), groups everything, and writes the result.
-
-That session does not navigate to each page. It parks one tab on the site, and
-once that tab is cleared it fetches everything else from inside it. A fetch made
-there inherits the clearance cookie and the open connection but skips the
-rendering, which is most of what a page load was costing: a search page pulls
-over two hundred images, ads and trackers that are thrown away seconds later.
-The source reduces each response to what its own parser reads before it crosses
-back, so a project page arrives as a few kilobytes instead of a megabyte and
-change.
+search result pages in a single HTTP session, fetches each new project page for
+the property-level facts (TOP year, total units, tenure, developer, PSF range),
+groups everything, and writes the result.
 
 Requests go out several at a time, and how many depends on which phase is
 running. Search pages are the heavier of the two and go six at a time, project
 pages go sixteen. Both numbers sit where the site stops answering any faster
-rather than where the machine does, so raising them buys nothing. A fetch cannot
-clear a Cloudflare challenge, so a page that comes back refused is loaded for
-real in a second tab, which is what the human verification above is about.
+rather than where the machine does, so raising them buys nothing.
+
+Paid requests are counted separately and go ten at a time, because what bounds
+them is the Bright Data zone rather than the site. Each tier has a gate of its
+own rather than sharing the worker pool: sharing one held the paid tier to
+whichever of the two limits was smaller, so raising it past the free one did
+nothing at all. Ten covers a full ten page search in one wave, which is worth
+more here than anywhere else given what one of those requests costs in time.
 
 While it runs, the page counts rather than sitting on one label: the listings
 step says which result page it is on, and the property details step says how
@@ -98,9 +169,11 @@ run, so it is the number worth watching. It reads `cached` instead when the
 property cache already covered every property, which is the whole difference
 between a warm search and a cold one.
 
-Scrapes run one at a time: Chrome holds an exclusive lock on its profile
-directory, and that profile is what carries the Cloudflare clearance between
-runs.
+Scrapes run one at a time. In browser mode that is a hard constraint, since
+Chrome holds an exclusive lock on the profile directory carrying the clearance.
+In API mode nothing requires it, and the same bound stands as a deliberate one
+on how hard one machine leans on the source and on how fast a paid tier can be
+spent.
 
 Project pages are cached in `.data/properties.json` for 30 days, because they
 change on the order of months while listings change hourly — without it, every
@@ -113,15 +186,22 @@ project is not re-attempted by every later search.
 Each of these is read from the environment at start-up, so
 `SCRAPE_SEARCH_CONCURRENCY=3 ./run.sh` is enough to change one.
 
-| Variable                    | Default  | What it does                                          |
-| --------------------------- | -------- | ----------------------------------------------------- |
-| `SCRAPE_SEARCH_CONCURRENCY` | `6`      | Search pages fetched at once                          |
-| `SCRAPE_DETAIL_CONCURRENCY` | `16`     | Project pages fetched at once                         |
-| `AUTO_SOLVE_SECONDS`        | `30`     | How long a challenge gets before it asks you for help |
-| `MANUAL_SOLVE_SECONDS`      | `300`    | How long it then waits for you                        |
-| `PROPERTY_TTL_SECONDS`      | 30 days  | How long a project record stays cached                |
-| `PROPERTY_FAIL_TTL_SECONDS` | 1 day    | How long a project page that failed is left alone     |
-| `CHAT_MODEL`                | `sonnet` | The model alias the assistant runs on                 |
+| Variable                    | Default            | What it does                                                 |
+| --------------------------- | ------------------ | ------------------------------------------------------------ |
+| `SCRAPE_TRANSPORT`          | `api`              | The mode to start on before anyone has picked one            |
+| `BRIGHTDATA_API_KEY`        | unset              | The Web Unlocker token. No default, and no tier 2 without it |
+| `BRIGHTDATA_ZONE`           | unset              | The Web Unlocker zone that token may use                     |
+| `SCRAPE_SEARCH_CONCURRENCY` | `6`                | Search pages fetched at once                                 |
+| `SCRAPE_DETAIL_CONCURRENCY` | `16`               | Project pages fetched at once                                |
+| `UNLOCKER_CONCURRENCY`      | `10`               | Paid requests in flight at once, across both phases          |
+| `UNLOCKER_COUNTRY`          | `sg`               | Where the unlocker exits from. Empty lets Bright Data pick   |
+| `SCRAPE_IMPERSONATE`        | `chrome`           | Which browser curl_cffi presents itself as                   |
+| `AUTO_SOLVE_SECONDS`        | `30`               | Browser mode: how long a challenge gets before you are asked |
+| `MANUAL_SOLVE_SECONDS`      | `300`              | Browser mode: how long it then waits for you before failing  |
+| `CHROME_PROFILE_DIR`        | `.chrome-profile/` | Browser mode: where the clearance is kept                    |
+| `PROPERTY_TTL_SECONDS`      | 30 days            | How long a project record stays cached                       |
+| `PROPERTY_FAIL_TTL_SECONDS` | 1 day              | How long a project page that failed is left alone            |
+| `CHAT_MODEL`                | `sonnet`           | The model alias the assistant runs on                        |
 
 ## Saved searches, hiding and bookmarking
 
@@ -169,7 +249,8 @@ when each one was saved so that is visible rather than assumed.
 | -------------------------- | ------------------------------------------------------------ |
 | `server.py`                | The API the SPA calls, and the background job handoff        |
 | `scraper.py`               | One job end to end: scrape, enrich, group, record            |
-| `browser.py`               | The visible Chrome session, its fetching and the wait        |
+| `fetching.py`              | The two tier transport: curl_cffi, then the unlocker         |
+| `browser.py`               | The visible Chrome session browser mode runs on              |
 | `sources/property_guru.py` | Reads the site's `__NEXT_DATA__` and project page markup     |
 | `grouping.py`              | listings to properties to unit types to units                |
 | `store.py`                 | Job rows, property cache, saved searches, shortlist, results |

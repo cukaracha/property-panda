@@ -9,6 +9,7 @@ who is on the other end of the socket.
 
 import time
 
+import store
 from sources.property_guru import PROPERTY_TYPE_CODES_BY_GROUP, PROPERTY_TYPE_GROUPS
 
 KNOWN_SOURCES = ("propertyguru",)
@@ -705,3 +706,18 @@ def clean_token(body: dict) -> str:
     if len(token) > MAX_TOKEN:
         raise ValueError("token is too long")
     return token
+
+
+def clean_scrape_mode(body: dict) -> str:
+    """Validate a scrape mode save. Unlike the token above there is no empty case.
+
+    A scrape has to run on something, so unsetting the mode means picking the other one
+    rather than sending nothing.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object")
+
+    mode = body.get("mode")
+    if mode not in store.SCRAPE_MODES:
+        raise ValueError(f"mode must be one of: {', '.join(store.SCRAPE_MODES)}")
+    return mode

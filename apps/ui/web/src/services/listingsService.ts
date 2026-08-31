@@ -40,16 +40,15 @@ import type {
 } from '../types/listings';
 
 /**
- * The local API (apps/local/property_search). It runs on this machine because the scrape
- * needs a real, visible browser window: the source sits behind a Cloudflare challenge
- * that only clears for a genuine browser, and that sometimes means a person clicking in
- * it. There is no Authorization header because there is nothing to authenticate against:
- * the server listens on loopback and serves one person.
+ * The local API (apps/local/property_search). It runs on this machine because that is
+ * where the scraper and the assistant live, not because the browser needs it anywhere in
+ * particular. There is no Authorization header because there is nothing to authenticate
+ * against: the server listens on loopback and serves one person.
  */
 const API_URL = import.meta.env.VITE_LISTINGS_API_URL || 'http://localhost:8000';
 
 /** Terminal states for the search poller. */
-export const SEARCH_TERMINAL: SearchStatus[] = ['succeeded', 'failed'];
+export const SEARCH_TERMINAL: SearchStatus[] = ['succeeded', 'failed', 'cancelled'];
 
 /**
  * Read a response body without assuming it is JSON. A gateway 502/504 answers
@@ -83,6 +82,22 @@ export async function triggerSearch(
   });
   const data = await readBody<TriggerSearchResponse>(response);
   if (!response.ok || !data) throw new Error(data?.message || 'Failed to start the search');
+  return data;
+}
+
+/**
+ * Ask a running scrape to stop, and hand back the status it was on.
+ *
+ * A request rather than a kill: the scrape stops starting new page fetches, and whatever
+ * is already in flight still finishes, so the job reaches 'cancelled' a moment later
+ * rather than the instant this returns. The poller is what puts it on screen.
+ */
+export async function cancelSearch(jobId: string): Promise<TriggerSearchResponse> {
+  const response = await fetch(`${API_URL}/listings/search/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+  });
+  const data = await readBody<TriggerSearchResponse>(response);
+  if (!response.ok || !data) throw new Error(data?.message || 'Failed to stop the search');
   return data;
 }
 

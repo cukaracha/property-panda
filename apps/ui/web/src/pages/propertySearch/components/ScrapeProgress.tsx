@@ -1,4 +1,5 @@
-import { Check, Circle, Hand } from 'lucide-react';
+import { Check, Circle, CircleAlert } from 'lucide-react';
+import { Button } from '../../../components/ui/button';
 import { Spinner } from '../../../components/ui/spinner';
 import { cn } from '../../../lib/utils';
 import type { SearchStatus } from '../../../types/listings';
@@ -11,8 +12,12 @@ export interface ScrapeProgressProps {
   pagesTotal: number;
   detailsFetched: number;
   detailsTotal: number;
-  /** Set while the scrape is waiting on the user, e.g. an unsolved Cloudflare challenge. */
+  /** Set when something outside the pages themselves has gone wrong, e.g. the unlocker
+   *  refusing the account. Absent the rest of the time. */
   note?: string | null;
+  onCancel: () => void;
+  /** True from the moment Cancel is pressed until the job actually reports cancelled. */
+  isCancelling: boolean;
 }
 
 function plural(count: number, noun: string): string {
@@ -51,14 +56,20 @@ function stepDetail(step: SearchStatus, props: ScrapeProgressProps): string {
  * step the count matters on -- without it the screen sits on the same line for over a
  * minute with no sign of whether anything is moving.
  *
- * A `note` means the scrape has stopped and needs the user before it can go on. It sits
- * above the steps under its own heading rather than beside them, because the steps keep
- * reporting healthy progress on whatever else is still in flight.
+ * A `note` is something wrong outside the pages themselves. It sits above the steps under
+ * its own heading rather than beside them, because the steps keep reporting healthy
+ * progress on whatever else is still in flight.
+ *
+ * Cancel sits under the steps rather than in the header, because it belongs to the run
+ * rather than to the screen, and it is deliberately quiet: stopping a search is a way out
+ * rather than the thing to do next. It stays pressed once used, since the scrape finishes
+ * whatever it already has in flight before the job goes terminal.
  */
 export default function ScrapeProgress(props: ScrapeProgressProps) {
   const { status, note } = props;
-  // queued shares the first step: the job is only queued while Chrome starts up.
-  // succeeded sits past the last one, so Done reads as ticked rather than running.
+  // queued shares the first step: the job is only queued for the moment before the
+  // worker picks it up. succeeded sits past the last one, so Done reads as ticked rather
+  // than running, and cancelled never reaches this component at all.
   const currentIndex =
     status === 'queued'
       ? 0
@@ -79,15 +90,16 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
       <div className='flex flex-col items-center gap-2'>
         <h2 className='type-ui-h2 text-strong'>{STATUS_LABELS[status]}</h2>
         <p className='type-ui-sm max-w-[420px] text-muted'>
-          A real browser window is doing the reading, so this usually takes about a minute.
+          Reading the listings and then each property behind them, which usually takes about a
+          minute.
         </p>
       </div>
 
       {note && (
         <div className='w-full max-w-[520px] rounded-card border border-line-brand bg-brand-subtle p-4 text-left'>
           <p className='type-ui-eyebrow mb-2 flex items-center gap-1.5 text-brand'>
-            <Hand size={13} />
-            This one needs you
+            <CircleAlert size={13} />
+            Something is in the way
           </p>
           <p className='text-sm text-strong'>{note}</p>
         </div>
@@ -140,6 +152,10 @@ export default function ScrapeProgress(props: ScrapeProgressProps) {
           );
         })}
       </ol>
+
+      <Button variant='ghost' size='sm' onClick={props.onCancel} disabled={props.isCancelling}>
+        {props.isCancelling ? 'Cancelling' : 'Cancel search'}
+      </Button>
     </div>
   );
 }

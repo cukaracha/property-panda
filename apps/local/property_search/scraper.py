@@ -1,15 +1,20 @@
 """
 The scrape job itself: search pages in, grouped properties out.
 
-For each job it walks the source's search result pages in one browser session, enriches
-each distinct property from its project page (cached), groups everything into the shape
-the UI renders, and records the result and the terminal status on the job row.
+For each job it walks the source's search result pages in one session, enriches each
+distinct property from its project page (cached), groups everything into the shape the UI
+renders, and records the result and the terminal status on the job row.
+
+Which transport that session is comes from the mode the user has chosen, and reaches no
+further than `run_job`: `fetching` reads the site over HTTP, `browser` drives a visible
+Chrome, and both answer the same calls. A search run in one mode and re-run in the other
+returns the same thing, so nothing recorded here says which one read the pages.
 
 A job is one search per property type group, since a single query cannot span two of them
 (see `sources/property_guru.py`). They are not sequential scrapes: every group's pages go
-into the same batches as every other group's, so the whole search still runs inside the
-one browser session the Chrome profile lock allows. Each group carries its own filters and
-its own page budget, which is the point of the fan-out rather than a consequence of it.
+into the same batches as every other group's, so three groups cost the wall clock of one.
+Each group carries its own filters and its own page budget, which is the point of the
+fan-out rather than a consequence of it.
 
 Both phases hand their URLs to the session in one batch, so it can have several of them
 in flight at once, and each says how many that should be: search pages are heavier on the
@@ -24,16 +29,22 @@ site quietly ignored, or a card that was never a search hit in the first place. 
 keeping those reads as a broad search rather than as a bug, which is why the check is here
 at all.
 
-Status moves queued -> scraping -> enriching -> succeeded, or -> failed.
+Status moves queued -> scraping -> enriching -> succeeded, or -> failed, or -> cancelled
+when the user stops it. A cancel is cooperative: a request already handed to a worker
+cannot be taken back, so it stops the job submitting new ones rather than interrupting
+what is in flight. Nothing is written as a result, but whatever enrichment had already
+paid for stays in the property cache, since those pages cost the same to fetch again.
 
 Enrichment is best effort by design: a project page that will not load leaves that
 property flagged `enrichment: "unavailable"` rather than failing a job whose listings are
 all fine.
 """
 
+import time
 import traceback
 
 import browser
+import fetching
 import grouping
 import store
 from sources.property_guru import PropertyGuruSource
@@ -44,6 +55,11 @@ MAX_PAGES_CEILING = 10
 # A failure's debuggable detail rides on the job row so it reaches the UI.
 DETAIL_MAX_CHARS = 4000
 
+# How often the scrape thread may re-read the cancel flag. It is asked between every
+# request, and the answer sits behind the store's one lock, so an unthrottled read would
+# take that lock thousands of times a job for something that changes at most once.
+CANCEL_POLL_SECONDS = 0.25
+
 # (min filter, max filter, listing field) for every bound `keep_matching_listings` checks.
 _RANGE_CHECKS = (
     ("minPrice", "maxPrice", "price"),
@@ -52,6 +68,17 @@ _RANGE_CHECKS = (
 )
 
 _SOURCES = {PropertyGuruSource.name: PropertyGuruSource}
+
+# The transports a job can read the pages through, keyed by the mode the user picks in the
+# sidebar. `api` is unattended and spends unlocker credits on the page shapes Cloudflare
+# refuses; `browser` is free and asks the user to clear those by hand. Both offer the same
+# session, so the choice reaches no further than this module: what a search returns is the
+# same either way, and nothing downstream records which one read it.
+_TRANSPORTS = {"api": fetching, "browser": browser}
+
+
+class Cancelled(Exception):
+    """The user asked for this job to stop. Not a failure: nothing went wrong."""
 
 
 def get_source(name: str):
@@ -62,8 +89,32 @@ def get_source(name: str):
     return source_class()
 
 
-def scrape_search_pages(session, source, searches, on_progress=None):
-    """Walk every group's search result pages in one browser session, deduplicating as we go.
+def get_transport(mode: str):
+    """Resolve the transport module for a scrape mode, the way get_source does a portal."""
+    transport = _TRANSPORTS.get(mode)
+    if transport is None:
+        raise ValueError(f"Unknown scrape mode: {mode}")
+    return transport
+
+
+def _check_stopped(session, abort):
+    """End the job early when the user has asked it to stop, or the transport itself failed.
+
+    Two very different endings from one place, because both are decided between phases
+    rather than inside them. A cancel means nothing further should be fetched. A transport
+    error means the tier that reads the pages Cloudflare refuses has stopped answering at
+    all, so what has been gathered is short for a reason the result payload has no way to
+    state. Reporting either as a complete search is the one outcome neither may produce.
+    """
+    if abort():
+        raise Cancelled()
+    if session.transport_error:
+        raise RuntimeError(session.transport_error)
+
+
+def scrape_search_pages(session, transport, source, searches, on_progress=None,
+                        should_abort=None):
+    """Walk every group's search result pages in one session, deduplicating as we go.
 
     Two batches rather than one. Every group's page 1 goes into the first, because its
     payload is what says how many pages that group's search actually has, and everything
@@ -73,8 +124,13 @@ def scrape_search_pages(session, source, searches, on_progress=None):
 
     A group's `maxPages` of 0 means every page its search has, which is only knowable from
     its page 1, so an unlimited run is bounded by what page 1 reports rather than upfront.
+
+    `should_abort` is checked as each batch lands, before anything is read out of it. A
+    cancelled first batch has no page 1 in it, and the missing page 1 below would otherwise
+    be reported as the search having broken rather than as the user having stopped it.
     """
     report = on_progress or (lambda done, total: None)
+    abort = should_abort or (lambda: False)
     extract_js = source.search_extract_js()
     groups = [search["propertyTypeGroup"] for search in searches]
     filters_by_group = {search["propertyTypeGroup"]: search["filters"] for search in searches}
@@ -82,9 +138,11 @@ def scrape_search_pages(session, source, searches, on_progress=None):
     first_pages = session.fetch_many(
         [(group, source.build_search_url(group, filters_by_group[group], 1)) for group in groups],
         must_contain="__NEXT_DATA__",
-        concurrency=browser.SCRAPE_SEARCH_CONCURRENCY,
+        concurrency=transport.SCRAPE_SEARCH_CONCURRENCY,
         extract_js=extract_js,
+        should_abort=should_abort,
     )
+    _check_stopped(session, abort)
 
     listings = []
     seen = set()
@@ -144,9 +202,11 @@ def scrape_search_pages(session, source, searches, on_progress=None):
             rest,
             must_contain="__NEXT_DATA__",
             on_progress=lambda done, total: report(done_before + done, pages_total),
-            concurrency=browser.SCRAPE_SEARCH_CONCURRENCY,
+            concurrency=transport.SCRAPE_SEARCH_CONCURRENCY,
             extract_js=extract_js,
+            should_abort=should_abort,
         )
+        _check_stopped(session, abort)
         for key, _ in rest:
             page_html = fetched.get(key)
             if not page_html:
@@ -290,8 +350,14 @@ def _in_range(value, low, high) -> bool:
     return (low is None or value >= low) and (high is None or value <= high)
 
 
-def enrich_properties(session, source, listings, on_progress=None):
-    """Fetch each uncached project page once, returning propertyId -> project record."""
+def enrich_properties(session, transport, source, listings, on_progress=None,
+                      should_abort=None):
+    """Fetch each uncached project page once, returning propertyId -> project record.
+
+    A cancelled pass still stores what it managed to fetch. Those pages cost the same to
+    read again, and the cache is the whole difference between a warm run and a cold one,
+    so throwing them away would make stopping a search more expensive than finishing it.
+    """
     report = on_progress or (lambda done, total: None)
     by_id = {}
     for listing in listings:
@@ -320,8 +386,9 @@ def enrich_properties(session, source, listings, on_progress=None):
         targets,
         must_contain="property-attr",
         on_progress=report,
-        concurrency=browser.SCRAPE_DETAIL_CONCURRENCY,
+        concurrency=transport.SCRAPE_DETAIL_CONCURRENCY,
         extract_js=source.project_extract_js(),
+        should_abort=should_abort,
     )
 
     records = {}
@@ -347,6 +414,30 @@ def enrich_properties(session, source, listings, on_progress=None):
     return cached
 
 
+def _cancel_watch(job_id: str):
+    """Return a callable answering whether this job has been asked to stop.
+
+    The flag lives on the job row rather than in a threading.Event, because the request
+    arrives on the API thread and a job still queued behind another one has no thread of
+    its own yet. Reading it is a lock and a file though, and the fetch loop asks between
+    every request, so the answer is cached for CANCEL_POLL_SECONDS. Once it is True it
+    stays True and stops reading altogether: a cancel is never taken back.
+    """
+    state = {"checked_at": 0.0, "cancelled": False}
+
+    def cancelled():
+        if state["cancelled"]:
+            return True
+        now = time.monotonic()
+        if now - state["checked_at"] < CANCEL_POLL_SECONDS:
+            return False
+        state["checked_at"] = now
+        state["cancelled"] = store.is_cancelled(job_id)
+        return state["cancelled"]
+
+    return cancelled
+
+
 def run_job(job: dict) -> dict:
     """Scrape, enrich and group one job, returning the result payload."""
     source = get_source(job.get("source"))
@@ -363,7 +454,7 @@ def run_job(job: dict) -> dict:
     job_id = job["jobId"]
 
     def notice(message):
-        """Surface what the browser is blocked on, so the UI can say so mid-scrape."""
+        """Surface what the transport is blocked on, so the UI can say so mid-scrape."""
         store.update_status(job_id, note=message or None)
 
     def pages(done, total):
@@ -378,10 +469,18 @@ def run_job(job: dict) -> dict:
         """
         store.update_status(job_id, detailsFetched=done, detailsTotal=total)
 
-    with browser.BrowserSession(on_notice=notice) as session:
+    cancelled = _cancel_watch(job_id)
+
+    # Read once, here, rather than per phase: a mode flipped mid-scrape must not move a
+    # job onto a session it never opened.
+    mode = store.get_scrape_mode()
+    transport = get_transport(mode)
+    print(f"Scrape mode: {mode}")
+
+    with transport.open_session(on_notice=notice) as session:
         store.update_status(job_id, "scraping")
         listings, pages_scanned, total_pages, truncated = scrape_search_pages(
-            session, source, searches, on_progress=pages
+            session, transport, source, searches, on_progress=pages, should_abort=cancelled
         )
         # Before enrichment, so a listing that never belonged here does not cost a page
         # load on the way out.
@@ -389,7 +488,12 @@ def run_job(job: dict) -> dict:
         print(f"Scraped {len(listings)} distinct listings over {pages_scanned} page(s)")
 
         store.update_status(job_id, "enriching", listingCount=len(listings))
-        properties_cache = enrich_properties(session, source, listings, on_progress=details)
+        properties_cache = enrich_properties(
+            session, transport, source, listings, on_progress=details, should_abort=cancelled
+        )
+        # After the pass rather than inside it, so a cancel still leaves the project pages
+        # it had already paid for in the cache.
+        _check_stopped(session, cancelled)
 
     store_listing_photos(listings)
     properties = keep_matching_properties(
@@ -409,6 +513,11 @@ def run_job(job: dict) -> dict:
 def process_job(job: dict):
     """Run one job end to end, recording its terminal status on the job row."""
     job_id = job["jobId"]
+    # Asked before anything is fetched, because a job cancelled while it was still queued
+    # behind another one has never been looked at until now.
+    if store.is_cancelled(job_id):
+        store.update_status(job_id, "cancelled", note=None)
+        return
     try:
         result = run_job(job)
         store.put_result(job_id, result)
@@ -424,6 +533,12 @@ def process_job(job: dict):
         )
         if job.get("savedSearchId"):
             store.touch_saved_search(job["savedSearchId"])
+    except Cancelled:
+        # No result is written and the saved search is not stamped: a run that was stopped
+        # never returned anything, so the next one still measures new listings from the
+        # last time results actually came back.
+        print(f"Job {job_id} cancelled")
+        store.update_status(job_id, "cancelled", note=None)
     except Exception as e:
         print(f"Job {job_id} failed: {e}")
         store.update_status(

@@ -21,7 +21,7 @@ import { describeSearchForm, toSearchForm } from './utils/filterOptions';
 import { isNewSince, toListingRows } from '../../lib/listingRows';
 import { formatLastRun } from './utils/lastRun';
 
-export type ResultsPhase = 'running' | 'failed' | 'ready';
+export type ResultsPhase = 'running' | 'failed' | 'cancelled' | 'ready';
 
 export interface SearchView {
   /** Set only when a search could not be started at all, which is the one failure that stays here. */
@@ -253,7 +253,7 @@ function getResultsDescription(view: ResultsView): PageDescription {
       layout:
         'A back link above the wait itself, which fills the column: the current phase as a headline and the three steps of the scrape counting through underneath it.',
       sections: ['Back to search', 'Scrape progress'],
-      notes: `The scrape is still running (${view.status ? STATUS_LABELS[view.status] : 'starting'}) and no results are on screen yet, so do not describe any property. It cannot be cancelled. Leaving for the filters does not stop it, and coming back to this screen picks it up again.`,
+      notes: `The scrape is still running (${view.status ? STATUS_LABELS[view.status] : 'starting'}) and no results are on screen yet, so do not describe any property. Cancel search under the steps stops it. Leaving for the filters does not stop it, and coming back to this screen picks it up again.`,
     };
   }
 
@@ -263,6 +263,16 @@ function getResultsDescription(view: ResultsView): PageDescription {
       layout: 'A back link above an error message explaining why the scrape failed.',
       sections: ['Back to search', 'Search error'],
       notes: `The scrape failed: ${view.errorMessage || 'no reason was given'}. There are no results. Suggest going back to the filters to adjust them and run it again.`,
+    };
+  }
+
+  if (view.phase === 'cancelled') {
+    return {
+      ...base,
+      layout: 'A back link above a notice where the results would be.',
+      sections: ['Back to search', 'Cancelled notice'],
+      notes:
+        'The user cancelled this search before it finished, so there is nothing on screen to describe and nothing went wrong. The property details it had already fetched are cached, so running it again is quicker than the first time.',
     };
   }
 
@@ -397,6 +407,14 @@ function getResultsDetails(view: ResultsView): string {
 
   if (view.phase === 'failed') {
     lines.push(`The scrape failed: ${view.errorMessage || 'no reason was given'}.`, filters);
+    return lines.join('\n');
+  }
+
+  if (view.phase === 'cancelled') {
+    lines.push(
+      'The user cancelled this search before it finished, so there are no results.',
+      filters
+    );
     return lines.join('\n');
   }
 

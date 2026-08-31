@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { Building2, EyeOff, Heart, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../BrandLogo';
+import { ScrapeModeToggle } from '../ScrapeModeToggle';
 import { ThemeToggle } from '../ThemeToggle';
 import { cn } from '../../lib/utils';
 
@@ -15,8 +16,8 @@ const navItemClass = ({ isActive }: { isActive: boolean }) =>
 
 /**
  * The fixed left nav rail (there is no top bar): the brand mark, the nav, and a
- * footer with the theme control and the identity chip that links to the profile
- * page. Every item carries an icon over a short label in the rail and the full
+ * footer with the two switches (which transport a scrape runs on, and the theme)
+ * and the identity chip that links to the profile page. Every item carries an icon over a short label in the rail and the full
  * destination name in the mobile drawer; `title` always carries the full name.
  */
 export default function Sidebar({ onNavigate }: SidebarProps) {
@@ -59,6 +60,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       <div className='sidebar-spacer' />
 
       <div className='sidebar-foot'>
+        <ScrapeModeToggle />
         <ThemeToggle variant='row' />
         <NavLink
           to='/profile'
